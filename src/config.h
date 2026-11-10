@@ -68,13 +68,13 @@
 // Default and fallback graphics themes
 #define	KOBO_LOADER_GFX_THEME		"GFX>>loader"
 #define	KOBO_FALLBACK_GFX_THEME		"GFX>>mono"
-#define	KOBO_DEFAULT_GFX_THEME		"GFX>>redux"
+#define	KOBO_DEFAULT_GFX_THEME		"GFX>>halcyon"
 #define	KOBO_DEFAULT_TOOLS_THEME	"GFX>>tools"
 
 // Default and fallback sound themes
 #define	KOBO_LOADER_SFX_THEME		"SFX>>loader"
 #define	KOBO_FALLBACK_SFX_THEME		"SFX>>chip"
-#define	KOBO_DEFAULT_SFX_THEME		"SFX>>redux"
+#define	KOBO_DEFAULT_SFX_THEME		"SFX>>halcyon"
 
 // Sound banks to load the different sound themes into
 enum KOBO_sound_banks {

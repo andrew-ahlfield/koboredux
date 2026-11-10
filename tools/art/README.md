@@ -1,0 +1,67 @@
+# Art generators
+
+Every image in `data/gfx/halcyon` is produced by the Python package in
+`halcyon/`. Nothing is hand painted, so the theme can be rebuilt, retuned
+or extended by editing code and rerunning one command.
+
+## Requirements
+
+- Python 3.9 or newer
+- Pillow
+- numpy
+- scipy
+
+On Debian or Ubuntu: `sudo apt install python3-pil python3-numpy python3-scipy`.
+
+## Rebuilding the theme
+
+```sh
+cd tools/art
+python3 -m halcyon.build
+```
+
+This takes about 45 seconds and overwrites every PNG and the palette in
+`data/gfx/halcyon`. `data/gfx/halcyon/main.theme` is hand written and is not
+touched. The output is deterministic: the same code always produces the
+same pixels, so a rebuild with no source changes leaves `git status` clean.
+
+## How it is put together
+
+| Module | What it makes |
+|---|---|
+| `palette.py` | The 32 colour master palette (`halcyon.gpl`) and the material ramps every sprite is shaded with |
+| `render.py` | A small signed distance field renderer: shapes are built from circles, boxes, capsules and polygons, lit from the top left, quantized to a material ramp and outlined. Rotation sheets are rendered by rotating the shape, not the pixels, so every frame is crisp |
+| `noise.py` | Seamless value noise and fBm, used for rocks, nebulae and planet surfaces |
+| `sprites.py` | Player ship, enemies, motherships, rocks, bullets, bombs, rings, the player's bolts and every explosion |
+| `tiles.py` | Base tiles for the five regions, at 16, 12 and 8 pixels |
+| `backgrounds.py` | The tiling space backdrop, region planets and ground layers |
+| `fontdata.py`, `fonts.py` | A hand authored 5x7 font, scaled and styled into the four SoFont sheets |
+| `hud.py` | Dashboard frame, LEDs, weapon slots and the title logo |
+| `fx.py` | Noise strips, shield effect and the screen transition tiles |
+| `build.py` | Calls all of the above and writes the files the theme names |
+| `preview.py` | Helper that scales a sheet up for inspection |
+
+Frame layouts (rotation order, tile masks, LED states) follow what the
+engine expects; `docs/theme-catalog.md` lists every bank with its frame
+count and meaning.
+
+## Checking the result
+
+Render a scaled preview of any sheet:
+
+```sh
+cd tools/art
+python3 -m halcyon.preview -s4 player-preview.png ../../data/gfx/halcyon/sprites/player.png
+```
+
+Then run the game with the theme forced on, so nothing else can be
+mistaken for it:
+
+```sh
+build/release/src/kobord -data data -gfxtheme 'GFX>>halcyon' -sfxtheme 'SFX>>halcyon'
+```
+
+## License
+
+The generated art is CC BY-SA 4.0 (see `data/gfx/halcyon/LICENSE`). The
+scripts in this directory are GPL-2.0-or-later, like the game code.
