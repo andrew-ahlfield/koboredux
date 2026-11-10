@@ -72,10 +72,10 @@ def main():
         save(tiles.tileset(r, 16), out, d + "tiles.png")
         save(tiles.tileset(r, 12), out, d + "tiles-small.png")
         save(tiles.tileset(r, 8), out, d + "tiles-tiny.png")
-        save(backgrounds.planet(r), out, d + "planet.png", colors=16)
-        save(backgrounds.ground_l8(r), out, d + "ground-l8.png", colors=16)
+        save(backgrounds.planet(r), out, d + "planet.png", colors=64)
+        save(backgrounds.ground_l8(r), out, d + "ground-l8.png", colors=64)
         save(backgrounds.ground_l10(r), out, d + "ground-l10.png",
-             colors=16)
+             colors=64)
     save(backgrounds.space(), out, "space.png", colors=128)
 
     # Dashboard
