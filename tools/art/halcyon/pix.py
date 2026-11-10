@@ -209,12 +209,10 @@ def downscale(img, size):
     al = a[..., 3:4] / 255.0
     pm = a.copy()
     pm[..., :3] *= al
-    pim = Image.fromarray(np.clip(pm, 0, 255).astype(np.uint8), "RGBA")
     # Resize colour and alpha planes separately (Pillow would otherwise
     # premultiply again)
     planes = [Image.fromarray(pm[..., i].astype(np.uint8), "L")
               .resize((size, size), Image.BOX) for i in range(4)]
-    del pim
     r = np.stack([np.array(p).astype(float) for p in planes], axis=-1)
     alpha = r[..., 3] / 255.0
     safe = np.where(alpha > 0, alpha, 1)

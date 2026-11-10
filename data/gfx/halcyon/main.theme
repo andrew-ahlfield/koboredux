@@ -191,7 +191,7 @@ set D_PLANET_DITHERMODE RAW
 set D_PLANET_COLORMOD .6
 set D_PLANET_BRIGHTNESS	-24 -20 -16 -12 -8 -4 0
 set D_PLANET_CONTRAST	-40 -36 -32 -28 -24 -20 -16
-set D_BASES_COLORMOD	.45 .7 1 .55	// far/near/current/current_title
+set D_BASES_COLORMOD	.38 .6 1 .55	// far/near/current/current_title
 set D_FIRE_DITHERMODE ORDERED
 
 // Radar: KOBO_RC_(BACKGROUND BASE NODE CORE   PLAYER[0..7])

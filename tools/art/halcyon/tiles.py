@@ -25,7 +25,7 @@ import math
 import numpy as np
 from PIL import Image
 
-from .pix import (Canvas, hramp, glow_ramp, mix, shift, dilate, erode,
+from .pix import (Canvas, hramp, glow_ramp, shift, dilate, erode,
                   edges, rect, disc, octagon, downscale)
 from .render import sheet
 
@@ -70,7 +70,7 @@ REGIONS = [
             stripe=hramp(4, 0.85, 4, v0=0.45, v1=0.95, shift=0.1)),
     # 3: jungle military, olive drab, yellow hazard, orange lights, toxic
     #    green reactor
-    _region(58, 0.30, 0.09, 0.95, 0.35,
+    _region(84, 0.40, 0.08, 0.95, 0.30,
             accent=hramp(50, 0.9, 6, v0=0.28, v1=1.0, shift=0.15),
             light=glow_ramp(24),
             core=glow_ramp(95),
@@ -631,7 +631,6 @@ def wreck(side, variant, rg):
         cut = R_(-P, -P, T - 1 - ln, T + P)
     stub = full & ~cut
     # Jagged torn end
-    ys, xs = np.mgrid[0:N, 0:N]
     for _ in range(4):
         if side in (U, D):
             bx = rng.uniform(2, 14)
@@ -654,7 +653,6 @@ def wreck(side, variant, rg):
     # Torn edge: exposed dark interior and embers
     torn = stub & ~erode(stub, 2) & dilate(cut)
     t.c.fill(torn, m[0])
-    acc = rg["light"]
     emb = torn & (rng.uniform(size=(N, N)) < 0.25)
     t.c.fill(emb, glow_ramp(24)[3])
     # Debris chunks
@@ -666,7 +664,6 @@ def wreck(side, variant, rg):
         t.c.px(x + P, y + P, m[int(rng.randint(4, 8))])
         t.c.px(x + P + 1, y + P, m[2])
         t.c.px(x + P, y + P + 1, rg["outline"])
-    del acc
     return t.image()
 
 
