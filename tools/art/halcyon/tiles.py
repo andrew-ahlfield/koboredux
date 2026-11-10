@@ -1,24 +1,37 @@
-"""Base tiles for the five Halcyon regions: armoured installations.
+"""Base tiles for the five Halcyon regions: armoured hull structures.
 
-Kobo bases are networks of single tile corridors. Each tile is drawn the
-way a 1990s arcade ground set would be: a slab of armour plate seen from
-above with a visible south wall, a drop shadow on the ground to the lower
-right, engraved panel seams, rivets, vents, hazard striping and emissive
-lights. Hubs carry a second storey (bunkers, domes, sensor masts),
-cannons are domed twin barrel turrets, cores are glowing reactors.
+Kobo bases are mazes laid out on a two cell grid: junction cells sit on
+the even positions, straight connecting cells between them, and the cells
+in between are always empty. Drawn as thin corridors, such a maze reads as a
+tangle of pipes. Halcyon instead draws every cell as a broad slab of hull
+that fills its tile edge to edge wherever it connects, so a run of cells
+reads as one continuous armoured deck and the empty cells read as the
+trenches between hull blocks:
+
+- Straight runs are low, darker wall walk decks: two armour plates per
+  cell, a bulkhead joint where cells meet and a narrow sunken rail
+  channel (the "pipe" is a groove in the hull, not the hull itself).
+- Corners, three way and four way junctions carry towers: a bright roof
+  high above the decks with a wall of lit windows dropping to deck level
+  and a shadow on the deck, topped by fans, domes, stacks or dishes. Junction
+  heavy clusters read as a fortress of towers joined by wall walks.
+- Closed sides stop just short of the tile edge with chamfered corners;
+  the south side shows a tall wall, so the structure has height.
 
 Tile index layout (8 x 7 sheet), matching the engine's map.cpp:
   0         four-way junction, landing pad variant
-  1-15      corridor pieces by connection mask (U=1 R=2 D=4 L=8);
+  1-15      cells by connection mask (U=1 R=2 D=4 L=8);
             single-bit masks (1, 2, 4, 8) are the destructible cannons
   16-23     core, connected vertically (8 frame pulse)
   24-31     core, connected horizontally (8 frame pulse)
   32-35     armoured (indestructible) end caps U, R, D, L
-  40-45     straight corridor variants (even vertical, odd horizontal)
+  40-45     straight run variants (even vertical, odd horizontal)
   48-55     wreckage left after destruction (U, U, R, R, D, D, L, L)
 
-Every tile is drawn at 16 px. The 12 and 8 px sets used for the parallax
-layers are box filtered from it, which also softens them like distance.
+The 16 px set is drawn in full detail. The 12 and 8 px sets for the
+parallax layers are drawn separately as distant silhouettes (dark deck
+masses, bright tower blocks with lit windows, no line detail) and box
+filtered down.
 """
 
 import math
@@ -33,7 +46,9 @@ U, R, D, L = 1, 2, 4, 8
 T = 16          # tile size
 P = 16          # padding around the tile on the work canvas
 N = T + 2 * P   # work canvas size
-WALL = 3        # height of the base level south wall in pixels
+WALL = 3        # height of the deck's south wall in pixels
+X0, X1 = 1, 14  # deck columns on a closed side
+Y0, Y1 = 1, 11  # deck rows on a closed side (the wall hangs below)
 
 SHADOW = (6, 4, 18)
 HAZARD_DARK = (24, 20, 26)
@@ -111,23 +126,37 @@ def TILE():
     return R_(0, 0, T - 1, T - 1)
 
 
-ARM_V = (2, 13)   # vertical corridor top surface columns
-ARM_H = (2, 10)   # horizontal corridor top surface rows (wall below)
+_YS, _XS = np.mgrid[0:N, 0:N]
+XS = _XS - P
+YS = _YS - P
 
 
-def arm_masks(mask):
-    """Top surface masks of the corridor arms. Arms run far into the
-    padding so neighbouring tiles join seamlessly."""
-    arms = {}
+def deck_mask(mask, chamfer=3, inset=0):
+    """Top surface of a hull cell. Connected sides run far into the
+    padding so neighbouring cells join seamlessly; closed sides stop at
+    the deck margin, and a corner between two closed sides is chamfered."""
+    x0, x1 = X0 + inset, X1 - inset
+    y0, y1 = Y0 + inset, Y1 - inset
+    m = R_(x0, y0, x1, y1)
     if mask & U:
-        arms[U] = R_(ARM_V[0], -P, ARM_V[1], 8)
+        m |= R_(x0, -P, x1, y1)
     if mask & D:
-        arms[D] = R_(ARM_V[0], 6, ARM_V[1], T + P)
+        m |= R_(x0, y0, x1, T + P)
     if mask & L:
-        arms[L] = R_(-P, ARM_H[0], 8, ARM_H[1])
+        m |= R_(-P, y0, x1, y1)
     if mask & R:
-        arms[R] = R_(7, ARM_H[0], T + P, ARM_H[1])
-    return arms
+        m |= R_(x0, y0, T + P, y1)
+    if chamfer:
+        c = chamfer
+        if not mask & (U | L):
+            m &= ~(((XS - x0) + (YS - y0)) < c)
+        if not mask & (U | R):
+            m &= ~(((x1 - XS) + (YS - y0)) < c)
+        if not mask & (D | L):
+            m &= ~(((XS - x0) + (y1 - YS)) < c)
+        if not mask & (D | R):
+            m &= ~(((x1 - XS) + (y1 - YS)) < c)
+    return m
 
 
 # ---------------------------------------------------------------------------
@@ -143,46 +172,49 @@ class Tile:
 
     # Shading primitives -----------------------------------------------
 
-    def block(self, top, height, base=5, cast=(2, 2), outline=True,
-              ribs=True, ramp=None):
-        """Extrude a top surface mask: drop shadow, south wall, bevelled
-        top and outline."""
-        m = self.m if ramp is None else ramp
+    def block(self, top, height, base=5, cast=(1, 1), outline=True,
+              ribs=True, ramp=None, bevel=2):
+        """Extrude a top surface mask: shadow, south wall, bevelled top
+        and outline."""
+        m0 = self.m if ramp is None else ramp
+        m = lambda i: m0[max(0, min(i, len(m0) - 1))]  # noqa: E731
         wall = np.zeros_like(top)
         for k in range(1, height + 1):
             wall |= shift(top, 0, k)
         wall &= ~top
         body = top | wall
-        # Drop shadow: on the ground it is translucent, on structure it
-        # darkens what is already there.
         sh = shift(body, cast[0], cast[1]) & ~body
-        ground = sh & ~self.solid
-        self.c.fill(ground, SHADOW, 0.55)
-        self.c.tint(sh & self.solid, SHADOW, 0.45)
-        # Outline (drawn before the body so the body overwrites it)
+        if cast != (0, 0):
+            self.c.fill(sh & ~self.solid, SHADOW, 0.55)
+            self.c.tint(sh & self.solid, SHADOW, 0.5)
         if outline:
             ol = dilate(body) & ~body & ~self.solid
             self.c.fill(ol, self.rg["outline"])
-        # Wall: lip row, body, dark foot, vertical ribs
-        self.c.fill(wall, m[2])
+        # Wall: lit lip, body, dark foot, vertical ribs
+        self.c.fill(wall, m(2))
         lip = wall & shift(top, 0, 1)
-        self.c.fill(lip, m[4])
+        self.c.fill(lip, m(base - 1))
         foot = wall & ~shift(wall, 0, -1)
-        self.c.fill(foot & ~lip, m[1])
-        if ribs:
-            xs = np.arange(N)[None, :].repeat(N, 0)
-            rib = wall & ~lip & ~foot & ((xs - P) % 4 == 0)
-            self.c.fill(rib, m[1])
-            ribl = wall & ~lip & ~foot & ((xs - P) % 4 == 3)
-            self.c.fill(ribl, m[3])
-        # Top surface with bevelled edges
+        self.c.fill(foot & ~lip, m(1))
+        if ribs and height >= 2:
+            rib = wall & ~lip & ~foot & (XS % 4 == 0)
+            self.c.fill(rib, m(1))
+            ribl = wall & ~lip & ~foot & (XS % 4 == 3)
+            self.c.fill(ribl, m(3))
+        # Top: two pixel bevel, bright top left, dark bottom right
         e = edges(top)
-        self.c.fill(top, m[base])
-        self.c.fill(e["right"], m[base - 2])
-        self.c.fill(e["bottom"], m[base - 1])
-        self.c.fill(e["left"], m[base + 2])
-        self.c.fill(e["top"], m[base + 3])
-        self.c.fill(e["top"] & e["left"], m[min(base + 4, 9)])
+        self.c.fill(top, m(base))
+        if bevel >= 2:
+            inner = top & ~(e["top"] | e["left"] | e["bottom"] |
+                            e["right"])
+            ei = edges(inner)
+            self.c.fill(ei["top"] | ei["left"], m(base + 1))
+            self.c.fill(ei["bottom"] | ei["right"], m(base - 1))
+        self.c.fill(e["right"], m(base - 2))
+        self.c.fill(e["bottom"], m(base - 2))
+        self.c.fill(e["left"], m(base + 2))
+        self.c.fill(e["top"], m(base + 3))
+        self.c.fill(e["top"] & e["left"], m(base + 4))
         self.solid |= body
         return body
 
@@ -191,22 +223,26 @@ class Tile:
         outline, light from the top left."""
         e = edges(mk)
         self.c.fill(mk, self.m[base])
-        hi, lo = (self.m[base - 2], self.m[base + 2]) if inset else \
-            (self.m[base + 2], self.m[base - 2])
+        hi, lo = (self.m[base - 2], self.m[min(base + 2, 9)]) if inset \
+            else (self.m[min(base + 2, 9)], self.m[base - 2])
         self.c.fill(e["top"] | e["left"], hi)
         self.c.fill(e["bottom"] | e["right"], lo)
+
+    def recess(self, mk, depth=3):
+        """A sunken area: floor darker, the north and west inner walls in
+        shadow, the south and east lips catching the light."""
+        m = self.m
+        self.c.fill(mk, m[depth])
+        e = edges(mk)
+        self.c.fill(e["top"], m[1])
+        self.c.fill(e["left"], m[1])
+        self.c.fill(shift(e["top"], 0, 1) & mk & ~e["left"], m[2])
+        self.c.fill(e["right"] & ~e["top"], m[6])
+        self.c.fill(e["bottom"] & ~e["left"], m[6])
 
     def rivet(self, x, y):
         self.c.px(x + P, y + P, self.m[9])
         self.c.px(x + P + 1, y + P + 1, self.m[2])
-
-    def seam_h(self, y, x0, x1):
-        self.c.fill(R_(x0, y, x1, y) & self.solid, self.m[2])
-        self.c.fill(R_(x0, y + 1, x1, y + 1) & self.solid, self.m[7])
-
-    def seam_v(self, x, y0, y1):
-        self.c.fill(R_(x, y0, x, y1) & self.solid, self.m[2])
-        self.c.fill(R_(x + 1, y0, x + 1, y1) & self.solid, self.m[7])
 
     def vent(self, x0, y0, x1, y1, vertical=False):
         """Grille: dark slots with lit lips."""
@@ -221,8 +257,7 @@ class Tile:
 
     def hazard(self, mk, phase=0, period=4):
         """Diagonal hazard stripes inside mask."""
-        ys, xs = np.mgrid[0:N, 0:N]
-        band = ((xs + ys + phase) // (period // 2)) % 2 == 0
+        band = ((XS + YS + phase) // (period // 2)) % 2 == 0
         st = self.rg["stripe"]
         self.c.fill(mk & band, st[2])
         self.c.fill(mk & ~band, HAZARD_DARK)
@@ -245,9 +280,8 @@ class Tile:
     def dome(self, cx, cy, rad, ramp=None, spec=True):
         """Shaded hemisphere, lit from the top left."""
         m = self.m if ramp is None else ramp
-        ys, xs = np.mgrid[0:N, 0:N]
-        dx = (xs + 0.5 - (cx + P)) / rad
-        dy = (ys + 0.5 - (cy + P)) / rad
+        dx = (XS + 0.5 - cx) / rad
+        dy = (YS + 0.5 - cy) / rad
         d2 = dx * dx + dy * dy
         mk = d2 <= 1.0
         nz = np.sqrt(np.clip(1 - d2, 0, 1))
@@ -268,191 +302,235 @@ class Tile:
 
 
 # ---------------------------------------------------------------------------
-# Corridors
+# Hull decks
 # ---------------------------------------------------------------------------
 
-def _arm_details(t, mask, arms, keep):
-    """Trench, armour plates, seams and rivets along each arm, clipped to
-    'keep' (the arm area outside the hub)."""
+def hull(t, mask, base=5, chamfer=3):
+    """Paint the hull slab of a cell: a flat armoured roof with a hard
+    lit rim on the north and west, a dark rim on the south and east, a
+    tall south wall and a dark outline. A second, inner coaming line
+    follows the closed sides so the roof reads as heavy plate laid on a
+    frame. Returns the top surface mask and the flat roof inside the
+    rim."""
     m = t.m
-    for side, am in arms.items():
-        clip = am & keep
-        if side in (U, D):
-            # Centre conduit: shadowed left wall, ribbed floor, lit right
-            t.c.fill(R_(6, -P, 6, T + P) & clip, m[2])
-            t.c.fill(R_(7, -P, 8, T + P) & clip, m[3])
-            ys = np.arange(N)[:, None].repeat(N, 1)
-            rib = R_(7, -P, 8, T + P) & clip & ((ys - P) % 2 == 0)
-            t.c.fill(rib, m[5])
-            t.c.fill(R_(9, -P, 9, T + P) & clip, m[7])
-            # Seam across at the tile boundary
-            sm = R_(3, 0, 12, 0) & clip
-            t.c.fill(sm, m[2])
-            t.c.fill(shift(sm, 0, 1), m[7])
-            for x in (4, 11):
-                if clip[P + 3, P + x]:
-                    t.rivet(x, 3)
-                if clip[P + 12, P + x]:
-                    t.rivet(x, 12)
-        else:
-            t.c.fill(R_(-P, 5, T + P, 5) & clip, m[2])
-            t.c.fill(R_(-P, 6, T + P, 6) & clip, m[3])
-            xs = np.arange(N)[None, :].repeat(N, 0)
-            rib = R_(-P, 6, T + P, 6) & clip & ((xs - P) % 2 == 0)
-            t.c.fill(rib, m[5])
-            t.c.fill(R_(-P, 7, T + P, 7) & clip, m[7])
-            sm = R_(0, 3, 0, 9) & clip
-            t.c.fill(sm, m[2])
-            t.c.fill(shift(sm, 1, 0), m[7])
-            for y in (3, 9):
-                for x in (3, 12):
-                    if clip[P + y, P + x]:
-                        t.rivet(x, y if y == 3 else 8)
+    top = deck_mask(mask, chamfer=chamfer)
+    t.block(top, WALL, base=base, cast=(0, 0), bevel=1)
+    flat = erode(top, 1)
+    return top, flat
 
 
-def _hub_mask():
-    return OCT(1, 1, 14, 10, 2)
+def _groove(t, mask, keep):
+    """The service conduit, sunk into the deck as a narrow groove along
+    every connected side: shadowed west and north lips, lit east and
+    south lips."""
+    m = t.m
+    g = np.zeros((N, N), dtype=bool)
+    if mask & U:
+        g |= R_(7, -P, 8, 6)
+    if mask & D:
+        g |= R_(7, 5, 8, T + P)
+    if mask & L:
+        g |= R_(-P, 5, 8, 6)
+    if mask & R:
+        g |= R_(7, 5, T + P, 6)
+    g &= keep
+    t.c.fill(g, m[2])
+    t.c.fill(shift(g, 1, 0) & ~g & keep & dilate(g), m[6])
+    t.c.fill(shift(g, 0, 1) & ~g & keep & dilate(g), m[6])
+    t.c.fill(g & ~shift(g, 0, 1) & ~shift(g, 1, 0), m[3])
+    return g
 
 
-def corridor(mask, rg, variant=0, seed=0):
+def _joint(t, mask, flat):
+    """Bulkhead seam where two cells meet, across the flat deck only, so
+    a straight run reads as one long segmented hull."""
+    m = t.m
+    if mask & U:
+        t.c.fill(flat & (YS == 0), m[3])
+        t.c.fill(flat & (YS == 1), m[7])
+    if mask & L:
+        t.c.fill(flat & (XS == 0), m[3])
+        t.c.fill(flat & (XS == 1), m[7])
+
+
+def deck(mask, rg, variant=0, seed=0):
     t = Tile(rg)
-    arms = arm_masks(mask)
     nconn = bin(mask).count("1")
     straight = mask in (U | D, L | R)
-    top = np.zeros((N, N), dtype=bool)
-    for am in arms.values():
-        top |= am
-    hub = None
-    if not straight:
-        hub = _hub_mask()
-        top |= hub
-    t.block(top, WALL)
-    keep = np.ones((N, N), dtype=bool)
-    if hub is not None:
-        keep &= ~dilate(hub)
-    _arm_details(t, mask, arms, keep)
-    if hub is not None:
-        t.plate(hub, base=5)
-        _superstructure(t, mask, nconn, variant, seed)
-    elif variant:
-        _corridor_variant(t, mask == (U | D), variant)
+    top, flat = hull(t, mask, base=3 if straight else 4)
+    if straight:
+        _straight_details(t, mask, flat, variant)
+    else:
+        _junction(t, mask, flat, nconn, variant, seed)
     return t.image()
 
 
-def _corridor_variant(t, vert, variant):
+def _straight_details(t, mask, flat, variant):
     m = t.m
-    if variant == 1:
-        # Hazard striped blast door band with a warning light
+    vert = mask == (U | D)
+    if variant == 0:
+        # Plain run: two armour plates per cell with a bulkhead joint, a
+        # narrow sunken rail channel and rivets
+        _joint(t, mask, flat)
         if vert:
-            band = R_(3, 5, 12, 10)
-            t.hazard(band, phase=0)
-            t.c.fill(R_(3, 4, 12, 4), m[2])
-            t.c.fill(R_(3, 11, 12, 11), m[7])
+            g = R_(7, -P, 8, T + P) & flat
+            t.c.fill(g & (XS == 7), m[1])
+            t.c.fill(g & (XS == 8), m[2])
+            t.c.fill(flat & (YS == 8) & ((XS < 7) | (XS > 8)), m[2])
+            t.c.fill(flat & (YS == 9) & ((XS < 7) | (XS > 8)), m[5])
+            for (x, y) in ((3, 3), (11, 11)):
+                t.rivet(x, y)
         else:
-            band = R_(5, 3, 10, 9)
-            t.hazard(band, phase=1)
-            t.c.fill(R_(4, 3, 4, 9), m[2])
-            t.c.fill(R_(11, 3, 11, 9), m[7])
+            g = R_(-P, 5, T + P, 6) & flat
+            t.c.fill(g & (YS == 5), m[1])
+            t.c.fill(g & (YS == 6), m[2])
+            t.c.fill(flat & (XS == 8) & ((YS < 5) | (YS > 6)), m[2])
+            t.c.fill(flat & (XS == 9) & ((YS < 5) | (YS > 6)), m[5])
+            for (x, y) in ((3, 2), (12, 8)):
+                t.rivet(x, y)
+    elif variant == 1:
+        # Bulkhead: a raised armour rib across the hull with hazard
+        # chevrons on its face
+        if vert:
+            _groove(t, mask, ~R_(-P, 4, T + P, 10))
+            t.block(R_(1, 5, 14, 7), 2, base=6, cast=(0, 1), ribs=False)
+            t.hazard(R_(4, 6, 11, 6), phase=0)
+            t.rivet(2, 5)
+            t.rivet(12, 5)
+        else:
+            _groove(t, mask, ~R_(5, -P, 10, T + P))
+            t.block(R_(6, 1, 8, 9), 2, base=6, cast=(1, 0), ribs=False)
+            t.hazard(R_(7, 3, 7, 7), phase=1)
+        _joint(t, mask, flat)
     elif variant == 2:
-        # Vent block and a pair of running lights
+        # Flush intake grille across the deck, a running light on the rim
         if vert:
-            t.plate(R_(3, 3, 12, 12), base=4, inset=True)
-            t.vent(5, 5, 10, 9)
-            t.light(4, 11, size=1)
-            t.light(11, 11, size=1, level=0.6)
+            _groove(t, mask, ~R_(-P, 3, T + P, 11))
+            t.recess(R_(4, 4, 11, 10), depth=2)
+            for y in range(5, 10, 2):
+                t.c.fill(R_(5, y, 10, y), m[5])
+            t.light(1, 7, size=1, level=0.9)
         else:
-            t.plate(R_(3, 3, 12, 9), base=4, inset=True)
-            t.vent(5, 4, 10, 7, vertical=True)
-            t.light(3, 4, size=1)
-            t.light(12, 4, size=1, level=0.6)
-    elif variant == 3:
-        # Coolant pipe bundle with painted clamps and a status light
-        acc = t.rg["accent"]
-        if vert:
-            for x in (3, 11):
-                pipe = R_(x, 0, x + 1, 15)
-                t.c.fill(pipe, m[6])
-                t.c.fill(R_(x, 0, x, 15), m[8])
-                t.c.fill(R_(x + 1, 0, x + 1, 15), m[3])
-            for y in (4, 11):
-                cl = R_(2, y, 13, y + 1)
-                t.c.fill(cl, acc[3])
-                t.c.fill(R_(2, y, 13, y), acc[5])
-                t.c.fill(R_(2, y + 1, 13, y + 1), acc[1])
-            t.light(7, 7, size=2, level=0.9)
-        else:
-            for y in (3, 8):
-                pipe = R_(0, y, 15, y + 1)
-                t.c.fill(pipe, m[6])
-                t.c.fill(R_(0, y, 15, y), m[8])
-                t.c.fill(R_(0, y + 1, 15, y + 1), m[3])
-            for x in (3, 11):
-                cl = R_(x, 2, x + 1, 10)
-                t.c.fill(cl, acc[3])
-                t.c.fill(R_(x, 2, x, 10), acc[5])
-                t.c.fill(R_(x + 1, 2, x + 1, 10), acc[1])
-            t.light(7, 5, size=2, level=0.9)
-
-
-# ---------------------------------------------------------------------------
-# Hub superstructures
-# ---------------------------------------------------------------------------
-
-def _superstructure(t, mask, nconn, variant, seed):
-    m = t.m
-    kind = (mask * 7 + variant * 3 + seed) % 5
-    if variant == 1:
-        kind = 5
-    if kind == 0:
-        # Bunker with a vent grille and twin lights
-        top = R_(4, 2, 11, 5)
-        t.block(top, 2, base=6, cast=(1, 1))
-        t.vent(5, 3, 10, 4, vertical=True)
-        t.light(4, 8, size=1)
-        t.light(11, 8, size=1, level=0.5)
-    elif kind == 1:
-        # Sensor dome on a collar
-        t.c.fill(DISC(7.5, 5.5, 4.4) & t.solid, m[1])
-        t.dome(7.5, 5.2, 3.6, ramp=m[2:])
-        t.light(7, 4, ramp=t.rg["light"], size=1)
-        t.rivet(2, 8)
-        t.rivet(12, 8)
-    elif kind == 2:
-        # Raised plate with a hazard rim and a heavy hatch
-        top = R_(3, 2, 12, 6)
-        t.block(top, 2, base=5, cast=(1, 1), ribs=False)
-        t.hazard(R_(3, 2, 12, 2) | R_(3, 6, 12, 6))
-        t.c.fill(R_(6, 3, 9, 5), m[2])
-        t.c.fill(R_(6, 3, 9, 3), m[1])
-        t.c.fill(R_(7, 4, 8, 4), m[6])
-        t.light(13, 3, size=1, level=0.8)
-    elif kind == 3:
-        # Equipment tower: stacked block, mast light, side vents
-        t.block(R_(5, 1, 10, 4), 3, base=6, cast=(1, 1))
-        t.c.fill(R_(6, 2, 9, 2), m[8])
-        t.vent(3, 7, 4, 8, vertical=True)
-        t.vent(11, 7, 12, 8, vertical=True)
-        t.light(7, 0, size=2, level=1.0)
-    elif kind == 4:
-        # Gun emplacement ring (inactive) with accent paint
-        acc = t.rg["accent"]
-        ring = DISC(7.5, 5.5, 4.4) & ~DISC(7.5, 5.5, 2.6)
-        t.c.fill(DISC(7.5, 5.5, 4.4), m[2])
-        t.c.fill(ring, acc[2])
-        e = edges(DISC(7.5, 5.5, 4.4))
-        t.c.fill(e["top"] | e["left"], acc[4])
-        t.c.fill(e["bottom"] | e["right"], acc[0])
-        t.c.fill(DISC(7.5, 5.5, 2.6), m[1])
-        t.light(7, 5, size=1)
+            _groove(t, mask, ~R_(3, -P, 12, T + P))
+            t.recess(R_(4, 3, 11, 8), depth=2)
+            for x in range(5, 11, 2):
+                t.c.fill(R_(x, 4, x, 7), m[5])
+            t.light(13, 1, size=1, level=0.9)
+        _joint(t, mask, flat)
     else:
-        # Four-way landing pad: hazard ring around a lit pad
-        pad = OCT(2, 1, 13, 10, 3)
-        t.hazard(pad & ~OCT(4, 3, 11, 8, 2), phase=2)
-        t.plate(OCT(4, 3, 11, 8, 2), base=3, inset=True)
-        t.c.fill(R_(6, 4, 6, 7) | R_(9, 4, 9, 7) | R_(7, 5, 8, 6),
-                 t.rg["accent"][4])
-        for (lx, ly) in ((1, 5), (14, 5), (7, 0), (8, 11)):
+        # Access hatch: inset armour plate with a handle and two lights
+        if vert:
+            _groove(t, mask, ~R_(-P, 3, T + P, 12))
+            t.plate(R_(4, 3, 11, 12), base=4, inset=True)
+            t.c.fill(R_(6, 7, 9, 8), m[2])
+            t.c.fill(R_(6, 7, 9, 7), m[7])
+            t.light(5, 4, size=1, level=0.8, halo=False)
+            t.light(10, 11, size=1, level=0.5, halo=False)
+        else:
+            _groove(t, mask, ~R_(3, -P, 12, T + P))
+            t.plate(R_(3, 3, 12, 8), base=4, inset=True)
+            t.c.fill(R_(6, 5, 9, 6), m[2])
+            t.c.fill(R_(6, 5, 9, 5), m[7])
+            t.light(4, 4, size=1, level=0.8, halo=False)
+            t.light(11, 7, size=1, level=0.5, halo=False)
+        _joint(t, mask, flat)
+
+
+# ---------------------------------------------------------------------------
+# Junction superstructures
+# ---------------------------------------------------------------------------
+
+def _fan(t, cx, cy, r, blades=5, phase=0.0):
+    """Recessed exhaust fan: dark well, hub and angled blades."""
+    m = t.m
+    well = DISC(cx, cy, r)
+    t.c.fill(dilate(well) & ~well, m[7])
+    t.c.fill(well, m[1])
+    ang = np.arctan2(YS + 0.5 - cy, XS + 0.5 - cx)
+    rr = np.hypot(XS + 0.5 - cx, YS + 0.5 - cy)
+    bl = (((ang + phase + rr * 0.35) * blades / (2 * math.pi)) % 1.0) < 0.45
+    t.c.fill(well & bl & (rr > 1.0), m[3])
+    t.c.fill(well & bl & (rr > 1.0) & (YS + 0.5 < cy), m[4])
+    t.c.fill(DISC(cx, cy, 1.2), m[6])
+    e = edges(well)
+    t.c.fill(e["top"] | e["left"], m[0])
+
+
+def _junction(t, mask, flat, nconn, variant, seed):
+    m = t.m
+    acc = t.rg["accent"]
+    if variant == 1:
+        # Four-way landing pad: flush hazard ring around a lit pad
+        pad = OCT(2, 1, 13, 11, 3)
+        inner = OCT(4, 3, 11, 9, 2)
+        _groove(t, mask, ~pad)
+        t.hazard(pad & ~inner, phase=2)
+        t.recess(inner, depth=3)
+        t.c.fill(R_(6, 4, 6, 8) | R_(9, 4, 9, 8) | R_(7, 6, 8, 6),
+                 acc[4])
+        for (lx, ly) in ((1, 6), (14, 6), (7, 0), (8, 12)):
             t.light(lx, ly, size=1, level=0.8, halo=False)
+        return
+
+    _groove(t, mask, ~R_(0, 0, 15, 12))
+    _tower(t, mask, nconn, (mask * 7 + seed * 3) % 5)
+
+
+TOWER_TOP = (0, 7)    # tower roof rows; its wall runs down to the deck edge
+
+
+def _tower(t, mask, nconn, kind):
+    """Junction cells carry a tall block: the roof sits high above the
+    decks that meet it and a four pixel south wall with lit windows drops
+    down to deck level, so a maze reads as a fortress of towers joined by
+    wall walks rather than a tangle of pipes."""
+    m = t.m
+    acc = t.rg["accent"]
+    lt = t.rg["light"]
+    y0, y1 = TOWER_TOP
+    x0 = 1 if not mask & L else 0
+    x1 = 14 if not mask & R else 15
+    c = 2 if nconn < 4 else 1
+    roof = OCT(x0, y0, x1, y1, c) & R_(x0, y0, x1, y1)
+    wallh = 4
+    t.block(roof, wallh, base=6, cast=(2, 2))
+    # Lit windows along the wall
+    for x in range(x0 + 2, x1 - 1, 3):
+        if (x + kind) % 2:
+            t.c.px(x + P, y1 + 2 + P, lt[3])
+        else:
+            t.c.px(x + P, y1 + 2 + P, m[1])
+    # Roof details by kind
+    if kind == 0:
+        # A big exhaust fan beside a roof grille
+        _fan(t, 5.0, 3.6, 3.0, phase=mask)
+        t.vent(10, 1, 13, 5, vertical=True)
+    elif kind == 1:
+        # Command dome on a collar with a beacon
+        t.c.fill(DISC(7.5, 3.8, 3.6) & roof, m[2])
+        t.dome(7.5, 3.5, 3.0, ramp=m[2:])
+        t.light(2, 2, size=1, level=1.0)
+        t.rivet(12, 2)
+    elif kind == 2:
+        # Roof grille and an exhaust stack
+        t.vent(2, 2, 8, 5, vertical=True)
+        st = R_(10, 1, 13, 4)
+        t.block(st, 2, base=7, cast=(1, 1), ribs=False, bevel=1)
+        t.c.fill(R_(11, 2, 12, 3), m[0])
+        t.light(3, 6, size=1, level=0.8, halo=False)
+    elif kind == 3:
+        # Stepped second storey with a painted band
+        up = R_(4, 1, 11, 3)
+        t.block(up, 2, base=7, cast=(1, 1), ribs=False)
+        t.c.fill(R_(x0 + 1, 6, x1 - 1, 6) & roof, acc[3])
+        t.light(12, 2, size=1, level=1.0)
+    else:
+        # Radar mast: a dish on a turntable
+        t.c.fill(DISC(7.5, 3.5, 3.4) & roof, acc[1])
+        t.c.fill(DISC(7.5, 3.5, 2.6), m[7])
+        t.c.fill(DISC(7.0, 3.0, 1.4), m[9])
+        t.c.fill(DISC(8.5, 4.5, 1.2) & DISC(7.5, 3.5, 2.6), m[4])
+        t.light(13, 5, size=1, level=1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -463,33 +541,22 @@ _AWAY = {U: (0, 1), D: (0, -1), L: (1, 0), R: (-1, 0)}
 
 
 def cannon(mask, rg):
-    """Destructible gun turret. 'mask' is the side the corridor leaves
-    through; the barrels point the other way."""
+    """Destructible gun turret on a fat armoured pedestal. 'mask' is the
+    side the hull leaves through; the barrels point the other way."""
     t = Tile(rg)
-    arms = arm_masks(mask)
-    top = OCT(1, 1, 14, 11, 3)
-    for am in arms.values():
-        top |= am
-    t.block(top, WALL)
-    _arm_details(t, mask, arms, ~dilate(OCT(1, 1, 14, 11, 3)))
-    t.plate(OCT(1, 1, 14, 11, 3), base=5)
-    for (x, y) in ((3, 3), (12, 3), (3, 9), (12, 9)):
-        t.rivet(x, y)
+    top, flat = hull(t, mask, chamfer=4)
+    _groove(t, mask, ~OCT(1, 0, 14, 12, 3))
+    _joint(t, mask, flat)
     m = t.m
     acc = rg["accent"]
     ax, ay = _AWAY[mask]
-    # Gun house offset away from the barrels so they read clearly
-    if ay:
-        hx0, hy0 = 4, (1 if ay > 0 else 4)
-    else:
-        hx0, hy0 = (2 if ax > 0 else 6), 2
-    house = OCT(hx0, hy0, hx0 + 7, hy0 + 7, 2)
-    hcx, hcy = hx0 + 4.0, hy0 + 4.0
-    # Turret ring set into the slab
-    t.c.fill(DISC(hcx, hcy, 5.8) & t.solid, rg["outline"])
-    t.c.fill(DISC(hcx, hcy, 5.2) & t.solid, acc[1])
-    t.c.fill(DISC(hcx, hcy, 5.2) & ~DISC(hcx, hcy, 4.3) & t.solid &
-             (np.add.outer(np.arange(N), np.arange(N)) % 3 == 0), acc[3])
+    hcx = 7.5 - ax * 1.0
+    hcy = 6.0 - ay * 1.0
+    # Turret ring set into the slab, painted
+    t.c.fill(DISC(hcx, hcy, 6.2) & t.solid, rg["outline"])
+    t.c.fill(DISC(hcx, hcy, 5.6) & t.solid, acc[1])
+    t.c.fill(DISC(hcx, hcy, 5.6) & ~DISC(hcx, hcy, 4.6) & t.solid &
+             ((XS + YS) % 3 == 0), acc[3])
     # Twin barrels with muzzle brakes, reaching the tile edge
     if ay:
         y0, y1 = (int(hcy), 15) if ay > 0 else (0, int(hcy))
@@ -499,12 +566,12 @@ def cannon(mask, rg):
     else:
         x0, x1 = (int(hcx), 15) if ax > 0 else (0, int(hcx))
         tip = (14, 15) if ax > 0 else (0, 1)
-        bars = [R_(x0, 2, x1, 4), R_(x0, 7, x1, 9)]
-        brakes = [R_(tip[0], 1, tip[1], 5), R_(tip[0], 6, tip[1], 10)]
+        bars = [R_(x0, 3, x1, 5), R_(x0, 8, x1, 10)]
+        brakes = [R_(tip[0], 2, tip[1], 6), R_(tip[0], 7, tip[1], 11)]
     gun = np.zeros((N, N), dtype=bool)
     for b in bars + brakes:
         gun |= b
-    t.c.fill(dilate(gun) & ~gun & ~gun, rg["outline"])
+    t.c.fill(dilate(gun) & ~gun & TILE(), rg["outline"])
     for b in bars:
         e = edges(b)
         t.c.fill(b, m[5])
@@ -515,13 +582,12 @@ def cannon(mask, rg):
         t.c.fill(b, m[6])
         t.c.fill(e["top"] | e["left"], m[9])
         t.c.fill(e["bottom"] | e["right"], m[3])
-    # Gun house: bevelled block with the sensor dome on top
+    # Gun house: armoured dome with a glowing sensor eye
+    house = DISC(hcx, hcy, 4.0)
     t.c.fill(dilate(house) & ~house, rg["outline"])
-    t.plate(house, base=6)
-    t.c.fill(edges(house)["bottom"], m[2])
-    t.dome(hcx, hcy, 2.6, ramp=m[2:])
-    # Glowing sensor eye facing the barrels
-    lr = rg["light"]
+    t.dome(hcx, hcy, 4.0, ramp=m[1:])
+    t.c.fill(DISC(hcx, hcy, 4.0) & ~DISC(hcx, hcy, 3.2) &
+             (YS + 0.5 > hcy + 1.5), m[2])
     lx = int(round(hcx - 1 + ax * 2))
     ly = int(round(hcy - 1 + ay * 2))
     t.light(lx, ly, size=2, level=1.0)
@@ -529,26 +595,19 @@ def cannon(mask, rg):
 
 
 def hard_cap(mask, rg):
-    """Indestructible armoured end cap: no lights, heavy plate, hazard
-    chevrons."""
+    """Indestructible armoured end cap: a heavy bunker with hazard
+    chevrons and no lights."""
     t = Tile(rg)
-    arms = arm_masks(mask)
-    top = OCT(1, 1, 14, 11, 4)
-    for am in arms.values():
-        top |= am
-    t.block(top, WALL, base=4)
-    _arm_details(t, mask, arms, ~dilate(OCT(1, 1, 14, 11, 4)))
-    t.plate(OCT(1, 1, 14, 11, 4), base=4)
-    t.hazard(OCT(2, 2, 13, 10, 3) & ~OCT(4, 4, 11, 8, 2), phase=mask)
-    cap = OCT(4, 3, 11, 8, 2)
-    t.block(cap, 1, base=6, cast=(1, 1), ribs=False)
+    top, flat = hull(t, mask, base=4, chamfer=4)
+    _groove(t, mask, ~OCT(1, 0, 14, 12, 3))
+    _joint(t, mask, flat)
+    t.hazard(OCT(2, 1, 13, 11, 4) & ~OCT(4, 3, 11, 9, 3), phase=mask)
+    cap = OCT(4, 2, 11, 7, 2)
+    t.block(cap, 2, base=6, cast=(1, 1), ribs=False)
     m = t.m
-    # Cross brace
-    for k in range(5):
-        t.c.px(5 + k + P, 4 + k // 1 + P if k < 4 else 7 + P, m[3])
-    t.c.fill(R_(5, 5, 10, 5), m[3])
-    t.c.fill(R_(5, 6, 10, 6), m[8])
-    for (x, y) in ((5, 4), (10, 4), (5, 7), (10, 7)):
+    t.c.fill(R_(5, 4, 10, 4), m[3])
+    t.c.fill(R_(5, 5, 10, 5), m[8])
+    for (x, y) in ((5, 3), (10, 3), (5, 6), (10, 6)):
         t.c.px(x + P, y + P, m[9])
     return t.image()
 
@@ -556,24 +615,19 @@ def hard_cap(mask, rg):
 def core(frame, vertical, rg):
     t = Tile(rg)
     mask = (U | D) if vertical else (L | R)
-    arms = arm_masks(mask)
-    slab = OCT(0, 0, 15, 12, 4)
-    top = slab.copy()
-    for am in arms.values():
-        top |= am
-    t.block(top, WALL)
-    t.plate(slab, base=5)
+    # The core slab fills the whole cell so it meets any neighbour
+    top, flat = hull(t, 15, chamfer=0)
     m = t.m
     cr = rg["core"]
     pulse = 0.5 + 0.5 * math.cos(2 * math.pi * frame / 8)
     cx, cy = 8.0, 6.5
     # Hazard corners
-    for (x0, y0) in ((1, 1), (12, 1), (1, 9), (12, 9)):
-        hz = R_(x0, y0, x0 + 2, y0 + 2) & slab
+    for (x0, y0) in ((0, 0), (13, 0), (0, 9), (13, 9)):
+        hz = R_(x0, y0, x0 + 2, y0 + 2) & top
         t.hazard(hz, phase=frame // 4)
-    # Energy feed glowing in the corridor conduits
-    feed = R_(7, -P, 8, T + P) if vertical else R_(-P, 6, T + P, 6)
-    t.c.fill(feed & t.solid & ~slab, cr[2 + int(round(pulse * 2))])
+    # Energy feed glowing in the trench
+    tr = _groove(t, mask, ~DISC(cx, cy, 6.5))
+    t.c.fill(tr & TILE(), cr[2 + int(round(pulse * 2))])
     # Housing ring with clamps
     t.c.fill(DISC(cx, cy, 6.9), rg["outline"])
     t.c.fill(DISC(cx, cy, 6.4), m[3])
@@ -590,8 +644,7 @@ def core(frame, vertical, rg):
     rad = 4.9
     inner = DISC(cx, cy, rad)
     t.c.fill(DISC(cx, cy, rad + 0.6) & ~inner, cr[1])
-    ys, xs = np.mgrid[0:N, 0:N]
-    d = np.hypot(xs + 0.5 - (cx + P), ys + 0.5 - (cy + P)) / rad
+    d = np.hypot(XS + 0.5 - cx, YS + 0.5 - cy) / rad
     v = np.clip(1 - d, 0, 1) * (0.8 + 0.4 * pulse) + 0.2 + 0.15 * pulse
     k = np.clip(np.round(v * (len(cr) - 1)), 0, len(cr) - 1)
     for i in range(len(cr)):
@@ -604,59 +657,53 @@ def core(frame, vertical, rg):
             x = cx + math.cos(a) * rr - 0.5
             y = cy + math.sin(a) * rr - 0.5
             t.c.px(int(round(x)) + P, int(round(y)) + P, m[2])
-    # Glow spill onto the housing
     halo = DISC(cx, cy, 8.5) & ~DISC(cx, cy, 6.9) & t.solid
     t.c.tint(halo, cr[3], 0.15 + 0.2 * pulse)
-    # Blinking status lights on the slab
     on = frame % 4 < 2
-    t.light(1, 5, size=1, level=1.0 if on else 0.3, halo=False)
-    t.light(14, 5, size=1, level=0.3 if on else 1.0, halo=False)
+    t.light(0, 5, size=1, level=1.0 if on else 0.3, halo=False)
+    t.light(15, 5, size=1, level=0.3 if on else 1.0, halo=False)
     return t.image()
 
 
 def wreck(side, variant, rg):
-    """Wrecked corridor stub still attached on 'side', with scorched
-    ground, torn plating and glowing embers."""
+    """Wrecked hull stub still attached on 'side', with scorched ground,
+    torn plating and glowing embers."""
     rng = np.random.RandomState(side * 13 + variant * 5 + 1)
     t = Tile(rg)
-    ln = 6 + variant * 2
-    full = arm_masks(side)[side]
+    ln = 5 + variant * 3
+    full = deck_mask(side, chamfer=0)
     if side == U:
         cut = R_(-P, ln, T + P, T + P)
     elif side == D:
-        cut = R_(-P, -P, T + P, T - 1 - ln)
+        cut = R_(-P, -P, T + P, T - 1 - ln - WALL)
     elif side == L:
         cut = R_(ln, -P, T + P, T + P)
     else:
         cut = R_(-P, -P, T - 1 - ln, T + P)
     stub = full & ~cut
-    # Jagged torn end
-    for _ in range(4):
+    for _ in range(5):
         if side in (U, D):
-            bx = rng.uniform(2, 14)
-            by = ln if side == U else T - 1 - ln
+            bx = rng.uniform(1, 15)
+            by = ln if side == U else T - 1 - ln - WALL
         else:
-            by = rng.uniform(2, 11)
+            by = rng.uniform(1, 11)
             bx = ln if side == L else T - 1 - ln
-        stub &= ~DISC(bx, by, rng.uniform(1.2, 2.4))
-    # Scorch marks on the ground
+        stub &= ~DISC(bx, by, rng.uniform(1.2, 2.8))
     sc = np.zeros((N, N), dtype=bool)
-    for _ in range(4):
-        sc |= DISC(rng.uniform(3, 13), rng.uniform(3, 13),
-                   rng.uniform(1.8, 3.6))
+    for _ in range(5):
+        sc |= DISC(rng.uniform(2, 14), rng.uniform(2, 14),
+                   rng.uniform(2.0, 4.0))
     sc &= TILE()
     t.c.fill(sc, SHADOW, 0.35)
-    t.c.fill(erode(sc), SHADOW, 0.25)
-    t.block(stub, 2, base=4)
-    _arm_details(t, side, {side: stub}, stub)
+    t.c.fill(erode(sc), SHADOW, 0.3)
+    t.block(stub, 2, base=4, cast=(1, 1))
+    _groove(t, side, stub)
     m = t.m
-    # Torn edge: exposed dark interior and embers
     torn = stub & ~erode(stub, 2) & dilate(cut)
     t.c.fill(torn, m[0])
     emb = torn & (rng.uniform(size=(N, N)) < 0.25)
     t.c.fill(emb, glow_ramp(24)[3])
-    # Debris chunks
-    for _ in range(5):
+    for _ in range(6):
         x = int(rng.uniform(1, 14))
         y = int(rng.uniform(1, 14))
         if t.solid[y + P, x + P]:
@@ -668,30 +715,138 @@ def wreck(side, variant, rg):
 
 
 # ---------------------------------------------------------------------------
+# Distant silhouettes for the parallax layers
+# ---------------------------------------------------------------------------
+
+def far_tile(kind, arg, rg, seed=0):
+    """A cell as seen from far away: one broad shaded mass with a lit
+    north west rim, a dark south wall, a darker roof block on junctions
+    and the odd light. No seams, trenches or rivets."""
+    t = Tile(rg)
+    m = rg["metal"]
+    if kind == "core":
+        mask = (U | D) if arg[0] else (L | R)
+        top = deck_mask(mask, chamfer=0) | R_(0, 0, 15, Y1)
+    elif kind == "wreck":
+        side, variant = arg
+        top = deck_mask(side, chamfer=0)
+        ln = 5 + variant * 3
+        if side == U:
+            top &= R_(-P, -P, T + P, ln)
+        elif side == D:
+            top &= R_(-P, T - 1 - ln - WALL, T + P, T + P)
+        elif side == L:
+            top &= R_(-P, -P, ln, T + P)
+        else:
+            top &= R_(T - 1 - ln, -P, T + P, T + P)
+    else:
+        top = deck_mask(arg, chamfer=1 if kind == "deck" else 3)
+    wall = np.zeros_like(top)
+    for k in range(1, WALL + 1):
+        wall |= shift(top, 0, k)
+    wall &= ~top
+    t.c.fill(wall, m[1])
+    t.c.fill(top, m[2])
+    e = edges(top)
+    t.c.fill(e["top"] | e["left"], m[4])
+    t.c.fill(e["bottom"] | e["right"], m[1])
+    t.solid |= top | wall
+    lt = rg["light"]
+    if kind == "deck" and arg not in (U | D, L | R):
+        # Towers: the bright masses, with a row of lit windows
+        x0 = 1 if not arg & L else 0
+        x1 = 14 if not arg & R else 15
+        y0 = 0 if arg & U else 1
+        roof = R_(x0, y0, x1, 8)
+        wl = R_(x0, 9, x1, 11 + (0 if arg & D else WALL))
+        t.c.fill(wl, m[1])
+        t.c.fill(roof, m[6])
+        t.c.fill(edges(roof)["top"] | edges(roof)["left"], m[8])
+        t.c.fill(edges(roof)["bottom"], m[4])
+        for x in range(x0 + 2, x1 - 1, 4):
+            if (x // 4 + seed) % 3:
+                t.c.fill(R_(x, 10, x + 1, 11), lt[5])
+        if seed % 2:
+            t.c.fill(R_(6, 2, 9, 4), lt[4])
+    elif kind == "deck":
+        if seed % 4 == 0:
+            t.c.fill(R_(7, 5, 8, 6), lt[3])
+    elif kind == "cannon":
+        t.c.fill(DISC(7.5, 6.0, 4.5), m[6])
+        t.c.fill(DISC(7.5, 6.0, 4.5) & ~DISC(7.0, 5.5, 3.6), m[2])
+        t.c.fill(R_(7, 5, 8, 6), lt[4])
+    elif kind == "cap":
+        blk = OCT(3, 1, 12, 7, 2)
+        t.c.fill(shift(blk, 0, 3) & ~blk, m[1])
+        t.c.fill(blk, m[5])
+    elif kind == "core":
+        cr = rg["core"]
+        pulse = 0.5 + 0.5 * math.cos(2 * math.pi * arg[1] / 8)
+        t.c.fill(DISC(8.0, 6.5, 6.2), m[2])
+        t.c.fill(DISC(8.0, 6.5, 4.6), cr[2 + int(round(pulse))])
+        t.c.fill(DISC(8.0, 6.5, 2.6), cr[4 + int(round(pulse))])
+    return t.image()
+
+
+def _far_down(img, size):
+    """Box filter a distant silhouette down and drop the half covered
+    rim pixels so the mass keeps a clean edge."""
+    return downscale(img, size)
+
+
+# ---------------------------------------------------------------------------
 # Sheets
 # ---------------------------------------------------------------------------
+
+def _specs():
+    """(index, kind, arg) for every tile slot the engine uses."""
+    out = [(0, "deck", 15)]
+    for msk in range(1, 16):
+        out.append((msk, "cannon" if msk in (U, R, D, L) else "deck", msk))
+    for f in range(8):
+        out.append((16 + f, "core", (True, f)))
+        out.append((24 + f, "core", (False, f)))
+    for k, msk in enumerate((U, R, D, L)):
+        out.append((32 + k, "cap", msk))
+    for k in range(3):
+        out.append((40 + 2 * k, "deck", U | D))
+        out.append((41 + 2 * k, "deck", L | R))
+    for k, msk in enumerate((U, R, D, L)):
+        for v in range(2):
+            out.append((48 + 2 * k + v, "wreck", (msk, v)))
+    return out
+
 
 def tileset16(region):
     rg = REGIONS[region]
     blank = Image.new("RGBA", (T, T), (0, 0, 0, 0))
     tiles = [blank] * 56
-    tiles[0] = corridor(15, rg, variant=1, seed=region)
+    tiles[0] = deck(15, rg, variant=1, seed=region)
     for msk in range(1, 16):
         if msk in (U, R, D, L):
             tiles[msk] = cannon(msk, rg)
         else:
-            tiles[msk] = corridor(msk, rg, seed=region)
+            tiles[msk] = deck(msk, rg, seed=region)
     for f in range(8):
         tiles[16 + f] = core(f, True, rg)
         tiles[24 + f] = core(f, False, rg)
     for k, msk in enumerate((U, R, D, L)):
         tiles[32 + k] = hard_cap(msk, rg)
     for k in range(3):
-        tiles[40 + 2 * k] = corridor(U | D, rg, variant=k + 1)
-        tiles[41 + 2 * k] = corridor(L | R, rg, variant=k + 1)
+        tiles[40 + 2 * k] = deck(U | D, rg, variant=k + 1)
+        tiles[41 + 2 * k] = deck(L | R, rg, variant=k + 1)
     for k, msk in enumerate((U, R, D, L)):
         for v in range(2):
             tiles[48 + 2 * k + v] = wreck(msk, v, rg)
+    return tiles
+
+
+def tileset_far(region, size):
+    rg = REGIONS[region]
+    blank = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    tiles = [blank] * 56
+    for (i, kind, arg) in _specs():
+        tiles[i] = _far_down(far_tile(kind, arg, rg, seed=region + i), size)
     return tiles
 
 
@@ -699,9 +854,8 @@ _CACHE = {}
 
 
 def tileset(region, size=16):
-    if region not in _CACHE:
-        _CACHE[region] = tileset16(region)
-    tiles = _CACHE[region]
-    if size != T:
-        tiles = [downscale(t, size) for t in tiles]
-    return sheet(tiles, 8)
+    if size == T:
+        if region not in _CACHE:
+            _CACHE[region] = tileset16(region)
+        return sheet(_CACHE[region], 8)
+    return sheet(tileset_far(region, size), 8)
