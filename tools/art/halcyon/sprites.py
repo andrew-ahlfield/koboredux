@@ -248,6 +248,8 @@ def rockexpl():
     rng = np.random.RandomState(11)
     chunks = [(rng.uniform(0, 2 * math.pi), rng.uniform(0.5, 1.0),
                rng.uniform(1.2, 2.6), rng.uniform(-3, 3)) for _ in range(14)]
+    blast = _fireball_frames(RAMPS["hotfire"], 64, 12, 13, debris=10,
+                             sparks=10, scale=0.75)
     frames = []
     for f in range(12):
         t = (f + 1) / 12.0
@@ -263,8 +265,9 @@ def rockexpl():
         ring *= (1 - t) ** 0.8 * 1.3
         dust = RAMPS["rock"]
         fire = RAMPS["fire"]
-        core = np.clip(1 - d / (14 * (1 - t) + 1), 0, 1) * (1 - t) ** 1.5 \
-            * (0.7 + 0.5 * n)
+        # The fireball comes from _fireball_frames; only the dust ring
+        # is drawn here
+        core = np.zeros_like(d)
         for yy in range(64):
             for xx in range(64):
                 c = core[yy, xx]
@@ -279,6 +282,7 @@ def rockexpl():
                         img[yy, xx, :3] = dust[k]
                         img[yy, xx, 3] = 255
         im = Image.fromarray(img, "RGBA")
+        im.alpha_composite(blast[f])
         # Tumbling chunks
         for ang, sp, sz, spin in chunks:
             if t > 0.85 * sp + 0.15:
@@ -302,36 +306,35 @@ def rockexpl():
 # ---------------------------------------------------------------------------
 
 def _bullet_frames(ramp, n, spikes):
+    """Fat glowing orb filling the 6x6 cell: dark rim, saturated body,
+    white hot core and a highlight that runs round the rim."""
     frames = []
+    ys, xs = np.mgrid[0:6, 0:6]
+    dx, dy = xs + 0.5 - 3, ys + 0.5 - 3
+    d = np.hypot(dx, dy)
+    th = np.arctan2(dy, dx)
     for i in range(n):
         ph = 2 * math.pi * i / n
-        img = np.zeros((6, 6, 4), dtype=np.uint8)
-        ys, xs = np.mgrid[0:6, 0:6]
-        dx, dy = xs + 0.5 - 3, ys + 0.5 - 3
-        d = np.hypot(dx, dy)
-        th = np.arctan2(dy, dx)
-        r = 2.3 + 0.5 * np.cos(th * spikes + ph * (1 if spikes else 0)) \
-            * (1 if spikes else 0) + 0.25 * math.sin(ph)
+        r = 2.95 + (0.35 * np.cos(th * spikes + ph) if spikes else 0)
         v = np.clip(1 - d / r, 0, 1)
-        for yy in range(6):
-            for xx in range(6):
-                if v[yy, xx] <= 0.05:
-                    continue
-                k = int(np.clip(v[yy, xx] * len(ramp) * 1.25, 0,
-                                len(ramp) - 1))
-                img[yy, xx, :3] = ramp[k]
-                img[yy, xx, 3] = 255
+        v = v * (0.9 + 0.12 * math.sin(ph * 2))
+        v = v + 0.25 * np.clip(np.cos(th - ph), 0, 1) * (d > 1.2)
+        img = np.zeros((6, 6, 4), dtype=np.uint8)
+        inside = d < r
+        k = np.clip(np.round(0.5 + v * (len(ramp) - 1) * 1.15), 0,
+                    len(ramp) - 1).astype(int)
+        for j in range(len(ramp)):
+            sel = inside & (k == j)
+            img[sel, :3] = ramp[j]
+            img[sel, 3] = 255
         frames.append(Image.fromarray(img, "RGBA"))
     return frames
 
 
 def bullets():
-    blue = RAMPS["dark"][2:] + RAMPS["ice"][2:]
-    green = RAMPS["green"][1:]
-    red = RAMPS["red"][1:] + [rgb(19), rgb(20)]
-    return (sheet(_bullet_frames(blue, 14, 4), 7),
-            sheet(_bullet_frames(green, 7, 0), 7),
-            sheet(_bullet_frames(red, 14, 3), 7))
+    return (sheet(_bullet_frames(RAMPS["plasma"], 14, 4), 7),
+            sheet(_bullet_frames(RAMPS["toxic"], 7, 0), 7),
+            sheet(_bullet_frames(RAMPS["hotfire"][1:], 14, 3), 7))
 
 
 def _burst_frames(ramp, size, n, seed, rays=6, ring=True):
@@ -368,13 +371,96 @@ def _burst_frames(ramp, size, n, seed, rays=6, ring=True):
     return frames
 
 
+def _fireball_frames(ramp, size, n, seed, smoke=True, debris=6,
+                     sparks=6, scale=1.0):
+    """Fat 1990s style blast: a lumpy fireball with a white hot core that
+    cools through the ramp, rolls into dark smoke puffs at its rim, and
+    throws glowing sparks and tumbling debris."""
+    rng = np.random.RandomState(seed)
+    puffs = [(rng.uniform(0, 2 * math.pi), rng.uniform(0.25, 0.75),
+              rng.uniform(0.35, 0.6)) for _ in range(7)]
+    flying = [(rng.uniform(0, 2 * math.pi), rng.uniform(0.7, 1.15),
+               rng.randint(0, 2)) for _ in range(debris + sparks)]
+    smk = RAMPS["smoke"]
+    frames = []
+    c = size / 2.0
+    ys, xs = np.mgrid[0:size, 0:size]
+    for f in range(n):
+        t = f / float(max(n - 1, 1))
+        grow = 1 - (1 - min(1.0, t * 1.6)) ** 2
+        R = c * scale * (0.25 + 0.6 * grow)
+        dx, dy = xs + 0.5 - c, ys + 0.5 - c
+        lump = noise.fbm2(xs * 0.35 + seed, ys * 0.35 + f * 0.6,
+                          seed=seed, octaves=3)
+        d = np.hypot(dx, dy) / max(R, 0.5) - (lump - 0.5) * 0.7
+        heat = np.clip(1 - d, 0, 1) ** 0.8 * (1.25 - 1.1 * t)
+        fire = heat > 0.08
+        smoke_v = np.zeros_like(heat)
+        if smoke:
+            for ang, dist, rr in puffs:
+                pr = c * scale * rr * (0.4 + 0.6 * grow)
+                px = c + math.cos(ang) * c * scale * dist * grow
+                py = c + math.sin(ang) * c * scale * dist * grow - t * 2
+                pd = np.hypot(xs + 0.5 - px, ys + 0.5 - py) / max(pr, 0.5)
+                smoke_v = np.maximum(smoke_v, np.clip(1 - pd - (lump - 0.5)
+                                                      * 0.6, 0, 1))
+            smoke_v *= np.clip(1.6 * t + 0.1, 0, 1) * (1.2 - 0.9 * t)
+        img = np.zeros((size, size, 4), dtype=np.uint8)
+        bay = (((xs & 1) ^ (ys & 1)) * 0.5)
+        sm = (smoke_v > 0.18 + bay * 0.2) & ~(heat > 0.25)
+        k = np.clip((smoke_v * 1.4 * (len(smk) - 1)) * (1 - 0.5 * t), 0,
+                    len(smk) - 1).astype(int)
+        for i in range(len(smk)):
+            img[sm & (k == i), :3] = smk[i]
+        img[sm, 3] = 255
+        k = np.clip(heat * (len(ramp) - 1) * 1.15, 0, len(ramp) - 1)
+        k = k.astype(int)
+        for i in range(len(ramp)):
+            sel = fire & (k == i)
+            img[sel, :3] = ramp[i]
+            img[sel, 3] = 255
+        if smoke and t > 0.4:
+            # Cooling edges of the fireball roll over into smoke
+            cool = fire & (heat < 0.15 + 0.5 * (t - 0.4)) & (bay < 0.5)
+            img[cool, :3] = smk[1 + int(lump.mean() > 0.5)]
+        # Sparks (hot dots with trails) and debris (dark chunks)
+        for j, (ang, sp, kind) in enumerate(flying):
+            if t > 0.95:
+                continue
+            dist = c * scale * (0.2 + 0.85 * t * sp)
+            x = int(c + math.cos(ang) * dist)
+            y = int(c + math.sin(ang) * dist + t * t * 3)
+            if not (0 <= x < size - 1 and 0 <= y < size - 1):
+                continue
+            if j < sparks:
+                col = ramp[-1] if t < 0.5 else ramp[len(ramp) // 2]
+                img[y, x, :3] = col
+                img[y, x, 3] = 255
+                tx = int(c + math.cos(ang) * (dist - 1.5))
+                ty = int(c + math.sin(ang) * (dist - 1.5))
+                if 0 <= tx < size and 0 <= ty < size and \
+                        img[ty, tx, 3] == 0:
+                    img[ty, tx, :3] = ramp[len(ramp) // 2 - 1]
+                    img[ty, tx, 3] = 255
+            else:
+                img[y, x, :3] = RAMPS["steel"][5]
+                img[y, x + kind, :3] = RAMPS["steel"][2]
+                img[y + 1, x, :3] = RAMPS["dark"][1]
+                img[y, x, 3] = img[y, x + kind, 3] = img[y + 1, x, 3] = 255
+        frames.append(Image.fromarray(img, "RGBA"))
+    return frames
+
+
 def bullet_explosions():
     blue = RAMPS["dark"][2:] + RAMPS["ice"][2:]
     green = RAMPS["green"][1:]
     red = RAMPS["red"][1:] + [rgb(19), rgb(20)]
-    return (sheet(_burst_frames(blue, 16, 6, 1), 6),
-            sheet(_burst_frames(green, 16, 6, 2), 6),
-            sheet(_burst_frames(red, 16, 6, 3), 6))
+    return (sheet(_fireball_frames(RAMPS["plasma"], 16, 6, 1, smoke=False,
+                                   debris=0, sparks=5), 6),
+            sheet(_fireball_frames(RAMPS["toxic"], 16, 6, 2, smoke=False,
+                                   debris=0, sparks=5), 6),
+            sheet(_fireball_frames(RAMPS["hotfire"][1:], 16, 6, 3,
+                                   smoke=False, debris=0, sparks=5), 6))
 
 
 # ---------------------------------------------------------------------------
@@ -410,8 +496,10 @@ def ring():
 
 def ringexpl():
     ramp = RAMPS["violet"][1:] + [rgb(8)]
-    a = _burst_frames(ramp, 20, 8, 21, rays=8)
-    b = _burst_frames(RAMPS["rose"][1:], 20, 8, 22, rays=5)
+    a = _fireball_frames(RAMPS["magenta"], 20, 8, 21, smoke=False,
+                         debris=2, sparks=8)
+    b = _fireball_frames(RAMPS["plasma"], 20, 8, 22, smoke=False,
+                         debris=2, sparks=6)
     return sheet(a + b, 8)
 
 
@@ -452,7 +540,8 @@ def bombs():
 
 def bombdeto():
     ramp = RAMPS["fire"] + [rgb(8)]
-    return sheet(_burst_frames(ramp, 20, 8, 31, rays=10), 8)
+    return sheet(_fireball_frames(RAMPS["hotfire"], 20, 8, 31, debris=4,
+                                  sparks=8), 8)
 
 
 # ---------------------------------------------------------------------------
@@ -482,24 +571,25 @@ def _bolt_img(ang, length, width, ramp, bright=1.0):
 
 
 def bolts():
-    ramp = [rgb(16), rgb(17), rgb(18), rgb(19), rgb(20), rgb(8)]
+    ramp = RAMPS["hotfire"][2:] + [rgb(8)]
     frames = [Image.new("RGBA", (8, 8), (0, 0, 0, 0)) for _ in range(128)]
     for d in range(8):
         ang = d * math.pi / 4
         for k in range(4):
             # Muzzle: a short hot blob growing into a bolt
-            frames[d * 4 + k] = _bolt_img(ang, 1.2 + k * 0.8,
-                                          1.9 - k * 0.2, ramp)
+            frames[d * 4 + k] = _bolt_img(ang, 2.2 + k * 0.6,
+                                          3.0 - k * 0.35, ramp)
     for ax in range(4):
         ang = ax * math.pi / 4
         for k in range(4):
-            frames[32 + ax * 8 + k] = _bolt_img(ang, 3.6 + (k % 2) * 0.4,
-                                                1.4 + 0.2 * (k == 1),
-                                                ramp, 1.0 - 0.06 * k)
-        frames[32 + ax * 8 + 4] = _bolt_img(ang, 3.0, 1.1, ramp[:4], 0.8)
+            frames[32 + ax * 8 + k] = _bolt_img(ang, 4.0 + (k % 2) * 0.3,
+                                                2.0 + 0.3 * (k == 1),
+                                                ramp, 1.05 - 0.05 * k)
+        frames[32 + ax * 8 + 4] = _bolt_img(ang, 3.2, 1.5, ramp[:4], 0.85)
         for k in range(5, 8):
-            frames[32 + ax * 8 + k] = _bolt_img(ang, 3.4, 1.3, ramp, 0.9)
-    sparks = _burst_frames(ramp, 8, 32, 41, rays=4, ring=False)
+            frames[32 + ax * 8 + k] = _bolt_img(ang, 3.8, 1.8, ramp, 0.95)
+    sparks = _fireball_frames(ramp, 8, 32, 41, smoke=False, debris=0,
+                              sparks=4, scale=1.1)
     for i in range(32):
         # Smooth decay so any 8 frame window starting at 80 + 4k reads
         # as a flash fading out.

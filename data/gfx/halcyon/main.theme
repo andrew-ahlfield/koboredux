@@ -42,24 +42,25 @@ set D_DASH_LEVEL	0	230	104	18	D_DASH_CONSOLE
 message "Loading in-game graphics"
 //-----------------------------------------------------------------------------
 
-// Master palette (32 colours; see halcyon.gpl)
+// Master palette (64 colours; see halcyon.gpl)
 path ""
 palette P_MAIN "halcyon.gpl"
 palette P_MAIN_STARS P_MAIN 3 5 6 7
 
 // Explosion ("fire") palettes, dark to bright. The engine adds a transparent
-// entry before the first colour. Levels alternate between hot orange blasts
-// and cooler plasma tints so stages feel distinct.
-palette P_FIRE_L1 P_MAIN 0 14 15 16 17 18 19 20 8
+// entry before the first colour. Every palette starts in warm smoke so
+// blasts roll into smoke as they cool. Levels alternate between hot orange
+// blasts and plasma, magenta and toxic tints so stages feel distinct.
+palette P_FIRE_L1 P_MAIN 0 40 41 42 33 34 35 36 37 38 39
 palette P_FIRE_L2 P_FIRE_L1
-palette P_FIRE_L3 P_MAIN 0 9 10 11 12 13 20 8
+palette P_FIRE_L3 P_MAIN 0 40 41 46 47 48 49 50 51 8
 palette P_FIRE_L4 P_FIRE_L1
-palette P_FIRE_L5 P_MAIN 0 14 21 22 23 24 20 8
+palette P_FIRE_L5 P_MAIN 0 40 41 58 59 60 61 62 63 8
 palette P_FIRE_L6 P_FIRE_L1
-palette P_FIRE_L7 P_MAIN 0 1 2 4 5 6 7 13 8
+palette P_FIRE_L7 P_MAIN 0 40 41 52 53 54 55 56 57 8
 palette P_FIRE_L8 P_FIRE_L1
-palette P_FIRE_L9 P_FIRE_L5
-palette P_FIRE_L10 P_MAIN 0 14 15 16 17 18 19 20 20 8
+palette P_FIRE_L9 P_FIRE_L3
+palette P_FIRE_L10 P_MAIN 0 40 41 42 43 32 33 34 35 36 37 38 39 39
 
 // Particle effects
 particles PFX_PIPEOUT {
@@ -74,8 +75,8 @@ alias PFX_PIPEIN PFX_PIPEOUT
 
 particles PFX_ENEMY1 {
 	default
-	count	160
-	radius	2	4	0	1	0
+	count	180
+	radius	3	5	0	1	0
 	speed	2.5	4	0	1	0
 	heat	1.5	2.5	.7	1	0
 }
@@ -110,8 +111,8 @@ particles PFX_PLAYER_DEATH {
 
 particles PFX_CANNON {
 	default
-	count	320
-	radius	4	9	0	1	0
+	count	360
+	radius	5	10	0	1	0
 	speed	4	6	0	1	0
 	heat	1.8	2.6	.6	1	0
 }
