@@ -34,13 +34,14 @@ same pixels, so a rebuild with no source changes leaves `git status` clean.
 | `render.py` | A small signed distance field renderer: shapes are built from circles, boxes, capsules and polygons, lit from the top left, quantized to a material ramp and outlined. Rotation sheets are rendered by rotating the shape, not the pixels, so every frame is crisp |
 | `noise.py` | Seamless value noise and fBm, used for rocks, nebulae and planet surfaces |
 | `sprites.py` | Player ship, enemies, motherships, rocks, bullets, bombs, rings, the player's bolts and every explosion (a shared fireball generator gives the blasts a white hot core, smoke, sparks and debris) |
-| `tiles.py` | Base tiles for the five regions: armoured installations drawn with `pix.py` at 16 px (south walls, drop shadows, plating, turrets, reactor cores, wreckage), box filtered to 12 and 8 px for the parallax layers |
+| `tiles.py` | Base tiles for the five regions, drawn with `pix.py`: every cell is a broad hull slab with a south wall; straight cells are low wall walk decks, junctions carry towers with lit windows, ends are turrets and bunkers. The 12 and 8 px parallax sets are separate distant silhouettes (flat masses and lights) |
 | `backgrounds.py` | The tiling space backdrop, and per region planets and ground layers with two materials each (rock and basalt, dunes and mesas, jungle and rivers, crust and magma fissures, ice and crevasses) plus small outposts |
 | `fontdata.py`, `fonts.py` | A hand authored 5x7 font, scaled and styled into the four SoFont sheets |
 | `hud.py` | Dashboard frame, LEDs, weapon slots and the title logo |
 | `fx.py` | Noise strips, shield effect and the screen transition tiles |
 | `build.py` | Calls all of the above and writes the files the theme names |
 | `preview.py` | Helper that scales a sheet up for inspection |
+| `mazepreview.py` | Builds engine style mazes from the tile sheets over the region ground, at 16, 12 and 8 px, to judge how dense bases read |
 
 Frame layouts (rotation order, tile masks, LED states) follow what the
 engine expects; `docs/theme-catalog.md` lists every bank with its frame
@@ -63,6 +64,12 @@ Render a scaled preview of any sheet:
 ```sh
 cd tools/art
 python3 -m halcyon.preview -s4 player-preview.png ../../data/gfx/halcyon/sprites/player.png
+```
+
+Or see the tiles assembled into bases (regions 1 to 5, default all):
+
+```sh
+python3 -m halcyon.mazepreview -s 2 maze-preview.png 3
 ```
 
 Then run the game with the theme forced on, so nothing else can be
