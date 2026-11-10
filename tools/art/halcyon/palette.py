@@ -72,6 +72,7 @@ RAMPS = {
     "steel":  hramp(218, 0.26, 9, v0=0.08, v1=0.97, shift=0.3),
     "hull":   hramp(212, 0.13, 9, v0=0.16, v1=1.00, shift=0.25),
     "dark":   hramp(232, 0.32, 6, v0=0.05, v1=0.46, shift=0.2),
+    "gunship": hramp(216, 0.34, 9, v0=0.09, v1=1.00, shift=0.3),
     "teal":   hramp(174, 0.72, 8, v0=0.08, v1=0.96, shift=0.25),
     "red":    hramp(356, 0.82, 8, v0=0.10, v1=1.00, shift=0.25),
     "fire":   ramp(33, 34, 35, 36, 37, 38, 39),

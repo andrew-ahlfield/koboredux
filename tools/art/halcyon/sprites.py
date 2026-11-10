@@ -12,55 +12,70 @@ from . import noise
 
 
 # ---------------------------------------------------------------------------
-# Player: "Halcyon" interceptor. Twin-ended gun spine (Kobo fires nose and
-# tail), swept wings, bubble canopy, red wingtip pods.
+# Player: "Halcyon" interceptor. A chunky armoured gunship: a fat fuselage
+# with a gun at each end (Kobo fires nose and tail), canards, broad
+# cranked wings with red armoured leading edges, twin engine pods with
+# glowing exhausts, and a bubble canopy with a glint.
 # ---------------------------------------------------------------------------
 
 def player_parts():
-    wing = mirror_x(sd_poly([(1.5, -3.5), (10.5, 4.0), (10.5, 6.5),
-                             (1.5, 4.5)]))
-    tip = mirror_x(sd_box(9.6, 4.6, 1.3, 2.6, 0.6))
-    body = sd_poly([(0, -10.5), (2.6, -5), (3.2, 2), (2.4, 9.5), (-2.4, 9.5),
-                    (-3.2, 2), (-2.6, -5)])
-    spine = sd_capsule(0, -11.5, 0, 11.5, 0.9)
-    canopy = sd_ellipse(0, -3.2, 1.6, 3.0)
-    nacelle = mirror_x(sd_capsule(4.4, 1.0, 4.4, 7.5, 1.4))
-    flame = mirror_x(sd_circle(4.4, 8.4, 1.1))
-    stripe = mirror_x(sd_poly([(5.5, 1.2), (8.2, 3.6), (8.2, 4.8),
-                               (5.5, 2.6)]))
+    body = sd_poly([(0, -10.4), (2.4, -7.6), (3.3, -2.0), (3.8, 2.6),
+                    (5.4, 5.4), (5.4, 9.4), (-5.4, 9.4), (-5.4, 5.4),
+                    (-3.8, 2.6), (-3.3, -2.0), (-2.4, -7.6)])
+    wing = mirror_x(sd_poly([(2.5, -1.0), (9.0, 3.6), (11.0, 6.2),
+                             (11.0, 8.4), (5.0, 8.4), (2.5, 6.5)]))
+    edge = mirror_x(sd_poly([(2.8, -0.9), (9.2, 3.5), (11.0, 6.0),
+                             (11.0, 7.1), (8.8, 5.0), (2.8, 1.1)]))
+    canard = mirror_x(sd_poly([(2.2, -7.0), (5.6, -4.6), (5.6, -3.2),
+                               (2.6, -4.0)]))
+    nozzle = mirror_x(sd_box(2.9, 9.4, 1.6, 0.9, 0.3))
+    flame = mirror_x(sd_circle(2.9, 10.6, 1.5))
+    guns = sd_union(sd_capsule(0, -11.6, 0, -8.0, 0.9),
+                    sd_capsule(0, 8.0, 0, 11.6, 0.9))
+    canopy = sd_ellipse(0, -3.4, 1.9, 3.4)
+    glint = sd_circle(-0.7, -4.8, 0.7)
+    intake = mirror_x(sd_poly([(3.8, 2.8), (5.0, 5.0), (3.4, 5.0)]))
+    lights = mirror_x(sd_circle(10.3, 7.6, 0.8))
     return [
-        Part(spine, "dark", z=0.0, h=0.6, bevel=0.8, dome=True),
-        Part(wing, "steel", z=0.2, h=0.6, bevel=1.6, spec=0.2),
-        Part(stripe, "red", z=0.8, h=0.2, bevel=0.6),
-        Part(tip, "red", z=0.6, h=0.8, bevel=1.0, dome=True),
-        Part(nacelle, "steel", z=0.5, h=1.0, bevel=1.4, dome=True),
-        Part(flame, "fire", glow=True, bevel=1.1, bright=0.1),
-        Part(body, "hull", z=0.6, h=1.6, bevel=2.6, dome=True, spec=0.5),
-        Part(canopy, "glass", z=1.8, h=1.0, bevel=1.4, dome=True, spec=0.9),
+        Part(guns, "dark", z=0.0, h=0.8, bevel=0.9, dome=True, spec=0.6),
+        Part(wing, "gunship", z=0.2, h=1.2, bevel=2.2, spec=0.45,
+             bright=-0.06),
+        Part(edge, "red", z=1.2, h=0.4, bevel=0.8, spec=0.6),
+        Part(lights, "teal", glow=True, bevel=0.8, bright=0.3),
+        Part(canard, "gunship", z=0.4, h=0.8, bevel=1.2, spec=0.4),
+        Part(flame, "hotfire", glow=True, bevel=1.5, bright=0.15),
+        Part(body, "hull", z=1.0, h=2.4, bevel=3.4, dome=True, spec=0.7,
+             bright=-0.1),
+        Part(intake, "dark", z=2.2, h=0.2, bevel=0.4),
+        Part(nozzle, "dark", z=1.2, h=0.6, bevel=0.6, spec=0.5),
+        Part(canopy, "glass", z=2.8, h=1.4, bevel=1.6, dome=True, spec=1.0),
+        Part(glint, "white", glow=True, bevel=0.7, bright=0.4),
     ]
 
 
 def player():
-    return sheet(rotations(player_parts, 64, 24, 24), 8)
+    return sheet(rotations(player_parts, 64, 24, 24, shade_bias=-0.06), 8)
 
 
 # ---------------------------------------------------------------------------
 # Enemy 1: dart missile (16x16, 16 directions)
 # ---------------------------------------------------------------------------
 
-def dart_parts(body_mat, fin_mat, glow_mat="fire", fat=1.0):
-    body = sd_capsule(0, -5.0, 0, 4.0, 1.7 * fat)
-    nose = sd_poly([(0, -7.5), (1.6 * fat, -4.5), (-1.6 * fat, -4.5)])
-    fins = mirror_x(sd_poly([(0.8, 1.0), (4.6, 5.5), (4.6, 6.5),
-                             (0.8, 4.5)]))
-    flame = sd_circle(0, 6.0, 1.3)
-    band = sd_box(0, -2.0, 1.9 * fat, 0.6)
+def dart_parts(body_mat, fin_mat, glow_mat="hotfire", fat=1.0):
+    body = sd_capsule(0, -4.6, 0, 3.8, 2.0 * fat)
+    nose = sd_poly([(0, -7.6), (1.9 * fat, -4.6), (-1.9 * fat, -4.6)])
+    fins = mirror_x(sd_poly([(1.0, 0.6), (5.2, 4.6), (5.2, 6.6),
+                             (1.0, 4.8)]))
+    flame = sd_circle(0, 6.4, 1.6)
+    band = sd_box(0, -1.6, 2.2 * fat, 0.7)
+    glint = sd_circle(-0.7, -3.2, 0.5)
     return [
-        Part(fins, fin_mat, z=0.0, h=0.5, bevel=1.0),
-        Part(flame, glow_mat, glow=True, bevel=1.3),
-        Part(body, body_mat, z=0.4, h=1.4, bevel=2.0, dome=True, spec=0.6),
-        Part(band, fin_mat, z=1.3, h=0.3, bevel=0.6),
-        Part(nose, fin_mat, z=0.6, h=1.0, bevel=1.4, dome=True),
+        Part(fins, fin_mat, z=0.0, h=0.8, bevel=1.2, spec=0.4),
+        Part(flame, glow_mat, glow=True, bevel=1.6, bright=0.1),
+        Part(body, body_mat, z=0.4, h=1.8, bevel=2.2, dome=True, spec=0.8),
+        Part(band, fin_mat, z=1.9, h=0.3, bevel=0.6),
+        Part(nose, fin_mat, z=0.8, h=1.2, bevel=1.6, dome=True, spec=0.6),
+        Part(glint, "white", glow=True, bevel=0.5, bright=0.3),
     ]
 
 
@@ -69,92 +84,115 @@ def missile1():
 
 
 def missile2():
-    # Enemy 3: heavy torpedo, crimson
+    # Enemy 3: heavy torpedo, crimson, armour rings and an amber seeker
     def b():
-        body = sd_capsule(0, -4.5, 0, 4.0, 2.6)
-        cap = sd_circle(0, -4.6, 1.6)
-        fins = mirror_x(sd_poly([(1.5, 0.5), (5.2, 4.5), (5.0, 6.4),
-                                 (1.5, 4.0)]))
-        flame = sd_circle(0, 6.2, 1.1)
-        ribs = sd_union(sd_box(0, -0.8, 2.7, 0.45), sd_box(0, 1.8, 2.7, 0.45))
+        body = sd_capsule(0, -4.2, 0, 3.8, 3.0)
+        cap = sd_circle(0, -4.6, 1.9)
+        fins = mirror_x(sd_poly([(2.0, 0.5), (5.8, 4.0), (5.6, 6.6),
+                                 (2.0, 4.4)]))
+        flame = sd_union(mirror_x(sd_circle(1.2, 6.4, 1.2)))
+        ribs = sd_union(sd_box(0, -1.0, 3.1, 0.5), sd_box(0, 1.8, 3.1, 0.5))
+        glint = sd_circle(-0.8, -5.3, 0.6)
         return [
-            Part(fins, "dark", h=0.5, bevel=1.0),
-            Part(flame, "fire", glow=True, bevel=1.6),
-            Part(body, "red", z=0.4, h=1.6, bevel=2.6, dome=True, spec=0.5),
-            Part(ribs, "wine_dark", z=1.4, h=0.2, bevel=0.5),
-            Part(cap, "amber", z=1.7, h=0.8, bevel=1.4, dome=True,
-                 spec=0.8),
+            Part(fins, "dark", h=0.8, bevel=1.1),
+            Part(flame, "hotfire", glow=True, bevel=1.4, bright=0.1),
+            Part(body, "red", z=0.4, h=2.0, bevel=2.8, dome=True, spec=0.7),
+            Part(ribs, "wine_dark", z=2.0, h=0.3, bevel=0.5),
+            Part(cap, "amber", z=2.0, h=1.0, bevel=1.6, dome=True,
+                 spec=0.9),
+            Part(glint, "white", glow=True, bevel=0.6, bright=0.3),
         ]
     return sheet(rotations(b, 16, 16, 16), 4)
 
 
 def missile3():
-    # Enemy 4: seeker with a forked bow, teal
+    # Enemy 4: seeker with a forked bow and a glowing eye, teal
     def b():
-        body = sd_capsule(0, -4.0, 0, 3.5, 2.0)
-        fork = mirror_x(sd_capsule(1.6, -6.2, 1.2, -2.0, 1.0))
-        fins = mirror_x(sd_poly([(1.2, 0.5), (5.0, 4.0), (5.0, 5.6),
-                                 (1.2, 4.2)]))
-        flame = sd_circle(0, 5.6, 1.1)
-        eye = sd_circle(0, -2.0, 1.0)
+        body = sd_capsule(0, -3.6, 0, 3.4, 2.3)
+        fork = mirror_x(sd_capsule(2.0, -6.8, 1.6, -1.6, 1.2))
+        fins = mirror_x(sd_poly([(1.4, 0.4), (5.6, 3.6), (5.6, 5.8),
+                                 (1.4, 4.4)]))
+        flame = sd_circle(0, 5.8, 1.4)
+        eye = sd_circle(0, -2.2, 1.2)
         return [
-            Part(flame, "teal", glow=True, bevel=1.1, bright=0.2),
-            Part(fins, "dark", h=0.5, bevel=1.0),
-            Part(fork, "teal", z=0.3, h=0.8, bevel=0.9, dome=True,
-                 bright=-0.15),
-            Part(body, "teal", z=0.5, h=1.3, bevel=2.0, dome=True, spec=0.5,
-                 bright=-0.15),
-            Part(eye, "fire", glow=True, bevel=1.0, bright=0.2),
+            Part(flame, "plasma", glow=True, bevel=1.4, bright=0.2),
+            Part(fins, "dark", h=0.7, bevel=1.1, spec=0.4),
+            Part(fork, "teal", z=0.4, h=1.0, bevel=1.0, dome=True,
+                 spec=0.6),
+            Part(body, "teal", z=0.6, h=1.6, bevel=2.2, dome=True, spec=0.7,
+                 bright=-0.1),
+            Part(eye, "hotfire", glow=True, bevel=1.2, bright=0.25),
         ]
     return sheet(rotations(b, 16, 16, 16), 4)
 
 
 # ---------------------------------------------------------------------------
-# Enemy 2: interceptor (24x24, 32 directions). Forward-swept amber wings.
+# Enemy 2: interceptor (24x24, 32 directions). A heavy violet body with
+# forward swept amber claw wings, twin engines and a red sensor eye.
 # ---------------------------------------------------------------------------
 
 def fighter():
     def b():
-        body = sd_poly([(0, -9.5), (2.8, -3.5), (3.0, 6.0), (0, 8.5),
-                        (-3.0, 6.0), (-2.8, -3.5)])
-        wing = mirror_x(sd_poly([(2.0, 3.5), (9.5, -4.0), (10.5, -2.6),
-                                 (4.2, 6.5), (2.0, 6.5)]))
-        claw = mirror_x(sd_capsule(9.8, -3.6, 9.8, 1.0, 1.0))
-        cockpit = sd_ellipse(0, -2.5, 1.5, 2.6)
-        intake = mirror_x(sd_box(2.6, 2.5, 0.9, 1.6, 0.4))
-        flame = sd_union(mirror_x(sd_circle(1.4, 8.2, 1.0)))
+        body = sd_poly([(0, -9.8), (3.0, -5.5), (3.6, 3.0), (2.6, 8.4),
+                        (-2.6, 8.4), (-3.6, 3.0), (-3.0, -5.5)])
+        wing = mirror_x(sd_poly([(2.4, 2.0), (8.6, -5.4), (11.2, -4.6),
+                                 (11.0, 0.4), (6.0, 7.6), (2.4, 7.6)]))
+        claw = mirror_x(sd_poly([(9.0, -5.0), (10.2, -10.0), (11.4, -9.4),
+                                 (11.2, -4.0)]))
+        edge = mirror_x(sd_poly([(8.8, -5.0), (11.0, -4.4), (10.9, -2.6),
+                                 (3.6, 3.8), (3.2, 2.0)]))
+        cockpit = sd_ellipse(0, -3.0, 1.7, 2.8)
+        eye = sd_circle(0, -7.2, 1.0)
+        engine = mirror_x(sd_capsule(1.8, 3.0, 1.8, 8.2, 1.4))
+        flame = mirror_x(sd_circle(1.8, 9.2, 1.2))
+        glint = sd_circle(-0.6, -4.0, 0.6)
         return [
-            Part(flame, "fire", glow=True, bevel=1.0),
-            Part(wing, "amber", z=0.2, h=0.7, bevel=1.6, spec=0.3),
-            Part(claw, "dark", z=0.5, h=0.8, bevel=0.9, dome=True),
-            Part(body, "violet", z=0.6, h=1.5, bevel=2.4, dome=True,
-                 spec=0.5),
-            Part(intake, "dark", z=1.0, h=0.3, bevel=0.5),
-            Part(cockpit, "glass", z=1.8, h=0.8, bevel=1.2, dome=True,
-                 spec=0.9),
+            Part(flame, "hotfire", glow=True, bevel=1.2, bright=0.1),
+            Part(wing, "amber", z=0.2, h=1.0, bevel=1.8, spec=0.5,
+                 bright=-0.12),
+            Part(edge, "red", z=1.2, h=0.3, bevel=0.6, spec=0.6),
+            Part(claw, "dark", z=0.6, h=1.0, bevel=1.0, dome=True,
+                 spec=0.6),
+            Part(engine, "dark", z=0.8, h=1.2, bevel=1.4, dome=True,
+                 spec=0.6),
+            Part(body, "violet", z=1.0, h=2.0, bevel=2.8, dome=True,
+                 spec=0.7),
+            Part(cockpit, "glass", z=2.6, h=1.0, bevel=1.4, dome=True,
+                 spec=1.0),
+            Part(eye, "hotfire", glow=True, bevel=1.0, bright=0.2),
+            Part(glint, "white", glow=True, bevel=0.6, bright=0.3),
         ]
     return sheet(rotations(b, 32, 24, 24), 8)
 
 
 # ---------------------------------------------------------------------------
-# Enemies 5-7: "Crescent" drones (24x24, 16 directions)
+# Enemies 5-7: "Crescent" drones (24x24, 16 directions). A heavy armoured
+# crescent with spiked horns, plate seams and a glowing reactor eye.
 # ---------------------------------------------------------------------------
 
 def crescent(mat, core_mat):
     def b():
-        outer = sd_circle(0, 1.0, 9.5)
-        inner = sd_circle(0, -4.5, 8.0)
+        outer = sd_circle(0, 1.0, 10.0)
+        inner = sd_circle(0, -5.2, 8.0)
         horn = sd_sub(outer, inner)
-        core = sd_circle(0, 2.5, 3.0)
-        coreglow = sd_circle(0, 2.5, 1.8)
-        tips = mirror_x(sd_circle(7.0, -2.0, 1.3))
-        spokes = sd_box(0, 6.5, 0.8, 2.3)
+        seams = sd_inter(horn, sd_union(
+            sd_rot(sd_box(0, 7.0, 0.35, 4.0), 0.9),
+            sd_rot(sd_box(0, 7.0, 0.35, 4.0), -0.9)))
+        spikes = mirror_x(sd_poly([(6.4, -2.0), (9.6, -6.6), (8.8, -1.0)]))
+        core = sd_circle(0, 3.0, 3.6)
+        coreglow = sd_circle(0, 3.0, 2.2)
+        tips = mirror_x(sd_circle(7.6, -1.4, 1.4))
+        glint = sd_circle(-0.9, 2.0, 0.6)
         return [
-            Part(horn, mat, z=0.2, h=1.4, bevel=2.6, dome=True, spec=0.45),
-            Part(spokes, "dark", z=1.0, h=0.4, bevel=0.6),
-            Part(tips, "dark", z=1.0, h=0.6, bevel=1.0, dome=True),
-            Part(core, "steel", z=1.2, h=1.0, bevel=1.6, dome=True),
-            Part(coreglow, core_mat, glow=True, bevel=1.8, bright=0.1),
+            Part(spikes, "dark", z=0.0, h=0.8, bevel=1.0, spec=0.6),
+            Part(horn, mat, z=0.2, h=2.0, bevel=3.0, dome=True, spec=0.7),
+            Part(seams, "dark", z=1.0, h=0.2, bevel=0.3, cut=True),
+            Part(tips, "steel", z=1.6, h=0.8, bevel=1.2, dome=True,
+                 spec=0.8),
+            Part(core, "steel", z=1.8, h=1.2, bevel=1.8, dome=True,
+                 spec=0.6),
+            Part(coreglow, core_mat, glow=True, bevel=2.0, bright=0.15),
+            Part(glint, "white", glow=True, bevel=0.6, bright=0.3),
         ]
     return sheet(rotations(b, 16, 24, 24), 4)
 
@@ -186,15 +224,21 @@ def bigship():
             ang = -a * 0.5 + k * 2 * math.pi / 3
             panels.append(sd_rot(sd_box(0, -10.0, 2.2, 3.5, 0.8), ang))
         panel = sd_union(*panels)
+        seams = []
+        for k in range(6):
+            ang = a + k * math.pi / 3
+            seams.append(sd_rot(sd_box(0, -14.0, 0.45, 6.0), ang))
+        seam = sd_inter(sd_union(*seams), sd_circle(0, 0, 21.0))
         dome = sd_circle(0, 0, 8.5)
         core = sd_circle(0, 0, 4.0)
         parts = [
-            Part(disc, "steel", z=0.0, h=5.0, bevel=14.0, dome=True,
-                 spec=0.3, bright=-0.08),
+            Part(disc, "gunship", z=0.0, h=5.0, bevel=14.0, dome=True,
+                 spec=0.6, bright=-0.12),
             Part(rim, "dark", z=4.0, h=0.5, bevel=1.0),
+            Part(seam, "dark", z=3.0, h=0.4, bevel=0.4, cut=True),
             Part(panel, "violet", z=4.6, h=0.5, bevel=1.2),
-            Part(pod, "hull", z=4.4, h=2.0, bevel=3.0, dome=True, spec=0.6,
-                 bright=-0.1),
+            Part(pod, "steel", z=4.4, h=2.0, bevel=3.0, dome=True, spec=0.8,
+                 bright=-0.05),
             Part(light, "fire", glow=True, bevel=1.2,
                  bright=0.25 * math.sin(a * 6)),
             Part(dome, "violet", z=5.0, h=4.0, bevel=7.0, dome=True,
