@@ -627,9 +627,96 @@ void st_game_t::frame()
 }
 
 
+// Time Flux bank, and the timeline while time is frozen
+static void render_flux_hud()
+{
+	int w = woverlay->width();
+	woverlay->font(B_SMALL_FONT);
+	int fh = woverlay->fontheight();
+
+	// Bank meter, top center
+	int bw = w / 3;
+	int bx = (w - bw) / 2;
+	int by = 4;
+	float f = (float)manage.flux_banked() / KOBO_FLUX_MAX;
+	woverlay->alphamod(96);
+	woverlay->foreground(woverlay->map_rgb(0, 0, 0));
+	woverlay->fillrect(bx - 1, by - 1, bw + 2, 6);
+	woverlay->alphamod(220);
+	if(manage.flux_frozen())
+		woverlay->foreground(woverlay->map_rgb(255, 200, 96));
+	else
+		woverlay->foreground(woverlay->map_rgb(96, 200, 255));
+	woverlay->fillrect(bx, by, (int)(bw * f), 4);
+	woverlay->alphamod(255);
+	woverlay->string(bx - woverlay->textwidth("FLUX ") - 2, by - 2,
+			"FLUX");
+
+	if(!manage.flux_frozen())
+	{
+		woverlay->alphamod(128);
+		woverlay->string(bx + bw + 6, by - 2, "LT/A: rewind");
+		woverlay->alphamod(255);
+		return;
+	}
+
+	// Timeline: the stretch the bank can reach, the cursor, the present
+	int head = manage.flux_head();
+	int reach = manage.flux_reach();
+	int cur = manage.flux_cursor();
+	int span = head - reach;
+	if(span < 1)
+		span = 1;
+	int tw = w * 2 / 3;
+	int tx = (w - tw) / 2;
+	int ty = woverlay->height() - 4 * fh;
+	woverlay->alphamod(160);
+	woverlay->foreground(woverlay->map_rgb(64, 96, 128));
+	woverlay->fillrect(tx, ty, tw, 6);
+	int cx = tx + tw * (cur - reach) / span;
+	woverlay->alphamod(160);
+	woverlay->foreground(woverlay->map_rgb(255, 160, 64));
+	woverlay->fillrect(cx, ty, tx + tw - cx, 6);	// Being undone
+	woverlay->alphamod(255);
+	woverlay->foreground(woverlay->map_rgb(255, 255, 255));
+	woverlay->fillrect(cx - 1, ty - 3, 3, 12);
+
+	// Frozen time left
+	float tl = manage.flux_time_left();
+	woverlay->foreground(woverlay->map_rgb(255, 200, 96));
+	woverlay->fillrect(tx, ty + 9, (int)(tw * tl), 2);
+
+	// Labels
+	char buf[64];
+	snprintf(buf, sizeof(buf), "-%.1f s",
+			(head - cur) * game.speed * 0.001f);
+	woverlay->center(ty - fh - 4, manage.flux_rescue() ?
+			"SHIP LOST!   REWIND TO SAVE IT" : "TIME FROZEN");
+	woverlay->string(cx - woverlay->textwidth(buf) / 2, ty + 13, buf);
+	woverlay->center(ty + 13 + fh + 2,
+			"LT/A: back    RT/S: forward    Fire: resume");
+}
+
+
+// Classic mode: ships left, top left
+static void render_classic_hud()
+{
+	char buf[32];
+	woverlay->font(B_NORMAL_FONT);
+	woverlay->alphamod(255);
+	snprintf(buf, sizeof(buf), "SHIPS %d", manage.ships_left());
+	if(!manage.ships_flashing())
+		woverlay->string(6, 4, buf);
+}
+
+
 void st_game_t::post_render()
 {
 	kobo_basestate_t::post_render();
+	if(manage.flux_mode())
+		render_flux_hud();
+	else if(manage.classic_mode())
+		render_classic_hud();
 	wradar->frame();
 }
 
@@ -728,7 +815,8 @@ void st_rewind_t::frame()
 {
 	if((manage.replay_mode() != RPM_RETRY) &&
 			(manage.state() == GS_PLAYING ||
-			manage.state() == GS_GETREADY))
+			manage.state() == GS_GETREADY ||
+			manage.state() == GS_GAMEOVER))
 		gsm.change(&st_game);
 	switch(manage.state())
 	{
@@ -1146,10 +1234,7 @@ void st_game_over_t::reenter()
 	}
 	start_time = (int)SDL_GetTicks();
 	frame_time = 0;
-	if(prefs->autocontinue)
-		countdown = prefs->autocontinue;
-	else
-		countdown = prefs->cont_countdown;
+	countdown = prefs->cont_countdown;
 }
 
 
@@ -1163,33 +1248,17 @@ void st_game_over_t::press(gc_targets_t button)
 	  case BTN_NO:
 		gsm.push(&st_main_menu);
 		break;
-	  case BTN_LEFT:
-	  case BTN_RIGHT:
-	  case BTN_UP:
-	  case BTN_DOWN:
-	  case BTN_UL:
-	  case BTN_UR:
-	  case BTN_DL:
-	  case BTN_DR:
-		// We don't want these in autocontinue mode.
-		if(prefs->autocontinue)
-			break;
 	  case BTN_PRIMARY:
 	  case BTN_SECONDARY:
 	  case BTN_TERTIARY:
 	  case BTN_SELECT:
 	  case BTN_LMB:
 	  case BTN_YES:
-		if(prefs->autocontinue)
-		{
-			if(frame_time < prefs->autocontinue * 500)
-				break;
-		}
-		else if(frame_time < 500)
+		if(frame_time < 500)
 			break;
 		sound.ui_play(S_UI_OK);
-		manage.rewind();
-		gsm.change(&st_rewind);
+		manage.continue_game_over();
+		gsm.change(&st_game);
 	  default:
 		break;
 	}
@@ -1199,29 +1268,7 @@ void st_game_over_t::press(gc_targets_t button)
 void st_game_over_t::frame()
 {
 	frame_time = (int)SDL_GetTicks() - start_time;
-	if(prefs->autocontinue)
-	{
-		if(prefs->autocontinue <= 9)
-		{
-			countdown = prefs->autocontinue - frame_time / 1000;
-			if(countdown < 1)
-			{
-				sound.ui_play(S_UI_OK);
-				manage.rewind();
-				gsm.change(&st_rewind);
-			}
-		}
-	}
-	else if(!prefs->cont_countdown)
-	{
-		if(frame_time > 700)
-		{
-			sound.ui_play(S_UI_OK);
-			manage.rewind();
-			gsm.change(&st_rewind);
-		}
-	}
-	else if(prefs->cont_countdown <= 9)
+	if(prefs->cont_countdown <= 9)
 	{
 		int prevcount = countdown;
 		countdown = prefs->cont_countdown - frame_time / 1000;
@@ -1241,16 +1288,20 @@ void st_game_over_t::post_render()
 {
 	kobo_basestate_t::post_render();
 
-	if(!prefs->autocontinue)
-	{
-		float ft = SDL_GetTicks() * 0.001;
-		woverlay->font(B_BIG_FONT);
-		int y = PIXEL2CS(100) + (int)floor(PIXEL2CS(15)*sin(ft * 6));
-		woverlay->center_fxp(y, "CONTINUE?");
-		screen.render_countdown(y + PIXEL2CS(60),
-				(int)SDL_GetTicks() - start_time,
-				prefs->cont_countdown, countdown);
-	}
+	float ft = SDL_GetTicks() * 0.001;
+	woverlay->font(B_BIG_FONT);
+	woverlay->center_fxp(PIXEL2CS(50), "GAME OVER");
+	int y = PIXEL2CS(110) + (int)floor(PIXEL2CS(15)*sin(ft * 6));
+	woverlay->center_fxp(y, "CONTINUE?");
+	screen.render_countdown(y + PIXEL2CS(60),
+			(int)SDL_GetTicks() - start_time,
+			prefs->cont_countdown, countdown);
+	woverlay->font(B_SMALL_FONT);
+	woverlay->center_fxp(PIXEL2CS(250), manage.game_mode() ==
+			KOBO_GM_CLASSIC ?
+			"Restart this stage with a full stock of ships." :
+			"Restart this stage with a fresh Flux bank.");
+	woverlay->center_fxp(PIXEL2CS(262), "Your score starts over.");
 
 	wradar->frame();
 }

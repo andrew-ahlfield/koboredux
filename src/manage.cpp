@@ -109,6 +109,34 @@ int _manage::delay_count;
 float _manage::sfx_volume = 1.0f;
 bool _manage::sfx_mute = false;
 
+int _manage::gamemode = KOBO_DEFAULT_GAMEMODE;
+
+int _manage::ships = 0;
+int _manage::bonus_next = 0;
+int _manage::respawn_timer = 0;
+int _manage::flash_ships_count = 0;
+
+int _manage::flux = 0;
+unsigned _manage::flux_settled = (unsigned)-1;
+std::vector<int> _manage::flux_hist;
+int _manage::death_timer = 0;
+
+bool _manage::frozen = false;
+bool _manage::freeze_dead = false;
+bool _manage::sim_valid = false;
+unsigned _manage::freeze_head = 0;
+unsigned _manage::freeze_cursor = 0;
+unsigned _manage::freeze_min = 0;
+unsigned _manage::sim_pos = 0;
+int _manage::freeze_timer = 0;
+int _manage::freeze_total = 0;
+int _manage::scrub_hold = 0;
+int _manage::preview_wait = 0;
+
+bool _manage::quiet_init = false;
+int _manage::entry_health = -1;
+int _manage::entry_charge = 0;
+
 
 const char *enumstr(KOBO_replaymodes rpm)
 {
@@ -422,21 +450,32 @@ void _manage::init_game(KOBO_replay *rp, bool newship)
 	gamecontrol.reset_flanks();
 	playtime = 0;
 
-	if(replay && owns_replay)
+	// Restarting the current replay (as rewinds do) keeps it, and its
+	// ownership. Anything else replaces it.
+	if(replay && owns_replay && (replay != rp))
 		delete replay;
+	if(replay != rp)
+		owns_replay = false;
 	replay = NULL;
-	owns_replay = false;
+	respawn_timer = 0;
+	death_timer = 0;
+	flux_settled = (unsigned)-1;
+	if(!quiet_init)
+		frozen = false;
 
 	if(rp)
 	{
 		// Start from replay!
 		replay = rp;
-		log_printf(ULOG, "Starting at stage %d from replay!\n",
-				replay->stage);
+		if(!quiet_init)
+			log_printf(ULOG, "Starting at stage %d from replay!\n",
+					replay->stage);
 
-		// Only use replay if compatible, and long enough!
-		if((replay->recorded() >= KOBO_MIN_REPLAY_LENGTH) &&
-				(replay->compatibility() == KOBO_RPCOM_FULL))
+		// Only use replay if compatible, and long enough! (Rewind
+		// previews always replay, as the player is already in it.)
+		if(quiet_init ||
+				((replay->recorded() >= KOBO_MIN_REPLAY_LENGTH) &&
+				(replay->compatibility() == KOBO_RPCOM_FULL)))
 		{
 			state(GS_PLAYING);
 			if(replaymode == RPM_PLAY)
@@ -475,6 +514,10 @@ void _manage::init_game(KOBO_replay *rp, bool newship)
 				(skill_levels_t)replay->skill);
 		gamerand.init(replay->seed);
 		score = replay->score;
+		gamemode = replay->mode;
+		ships = replay->ships;
+		bonus_next = replay->bonus_next;
+		flux = replay->flux < 0 ? KOBO_FLUX_START : replay->flux;
 		replay->rewind();
 	}
 	else
@@ -485,12 +528,22 @@ void _manage::init_game(KOBO_replay *rp, bool newship)
 		log_printf(ULOG, "Starting new level, stage %d!\n",
 				selected_stage);
 		game.set(GAME_SINGLE, selected_skill);
+		if(ships < 0)
+			ships = game.lives;
+		if(bonus_next < 0)
+			bonus_next = game.bonus_first;
+		if(flux < 0)
+			flux = KOBO_FLUX_START;
 		replay = new KOBO_replay();
 		replay->stage = selected_stage;
 		replay->type = game.type;
 		replay->skill = game.skill;
 		replay->seed = game_seed = gamerand.get_seed();
 		replay->score = score;
+		replay->mode = gamemode;
+		replay->ships = ships;
+		replay->bonus_next = bonus_next;
+		replay->flux = flux;
 		replay->modified(true);
 		if(campaign)
 			campaign->add_replay(replay);
@@ -517,7 +570,14 @@ void _manage::init_game(KOBO_replay *rp, bool newship)
 	else
 	{
 		// Old/new ship as specified; record state to replay!
-		myship.init(newship);
+		if(entry_health >= 0)
+		{
+			// Resuming a saved stage from its entry point
+			myship.init(entry_health, entry_charge);
+			entry_health = -1;
+		}
+		else
+			myship.init(newship);
 		replay->health = myship.health();
 		replay->charge = myship.charge();
 		replay->modified(true);
@@ -542,9 +602,10 @@ void _manage::init_game(KOBO_replay *rp, bool newship)
 		pxright->fx(PFX_OFF);
 		wdash->fade(1.0f);
 		wdash->mode(DASHBOARD_GAME);
-		sound.g_music(selected_stage);
+		if(!quiet_init)
+			sound.g_music(selected_stage);
 	}
-	if(prefs->debug)
+	if(prefs->debug && !quiet_init)
 		replay->log_dump(ULOG);
 }
 
@@ -570,6 +631,9 @@ void _manage::start_new_game(int slot, int stage, int skill)
 	select_stage(stage, GS_NONE);
 	selected_skill = (skill_levels_t)skill;
 	score = 0;
+	gamemode = prefs->gamemode;
+	ships = bonus_next = flux = -1;	// Filled in for the skill level
+	entry_health = -1;
 	if(campaign)
 		campaign->reset();
 	init_game(NULL, true);
@@ -591,9 +655,39 @@ bool _manage::continue_game(int slot)
 	gamecontrol.clear();
 	replaymode = RPM_PLAY;
 	init_game(replay);
-	advance(-KOBO_RETRY_REWIND);
+	if(state() == GS_PLAYING)
+	{
+		// Replay up to where the campaign was saved, and wait there
+		// in frozen time for the player to dive back in.
+		advance(replay->recorded());
+		replaymode = RPM_PLAY;
+		sim_valid = true;
+		sim_pos = replay->recorded();
+		if(myship.alive())
+			freeze(false);
+		else if(gamemode == KOBO_GM_FLUX)
+			freeze(true);
+		else
+			game_over();
+	}
 	set_mute(false);
 	return true;
+}
+
+
+void _manage::continue_game_over()
+{
+	// Like starting at a stage in Kobo Deluxe: a fresh stock of ships
+	// (or Flux), full health, and the score back at zero.
+	log_printf(ULOG, "Continuing at stage %d.\n", selected_stage);
+	gamecontrol.clear();
+	replaymode = RPM_PLAY;
+	score = 0;
+	ships = bonus_next = flux = -1;
+	entry_health = -1;
+	frozen = false;
+	init_game(NULL, true);
+	set_mute(false);
 }
 
 
@@ -664,10 +758,12 @@ void _manage::advance(int frame)
 		KOBO_player_controls rpctrl = replay->read();
 		if(rpctrl == KOBO_PC_END)
 			rpctrl = KOBO_PC_NONE;
+		sim_frame_start();
 		myship.control(rpctrl);
 		myship.move();
 		enemies.move();
 		myship.check_base_bolts();
+		sim_frame_end();
 		if((int)replay->position() + 10 < frame)
 			wfire->update_norender();
 		else
@@ -1059,6 +1155,9 @@ void _manage::update()
 		enemies.force_positions();
 	}
 
+	if(flash_ships_count > 0)
+		--flash_ships_count;
+
 	// Render effects, displays, and LEDs
 	run_noise();
 	run_leds();
@@ -1118,6 +1217,15 @@ void _manage::update()
 
 void _manage::run_game()
 {
+	// Time Flux: freeze time to rewind
+	if((gamemode == KOBO_GM_FLUX) && (replaymode == RPM_PLAY) &&
+			!demo_mode && !in_background && myship.alive() &&
+			replay && gamecontrol.pressed(BTN_REWIND))
+	{
+		freeze(false);
+		return;
+	}
+
 	KOBO_player_controls ctrlin = in_background ? KOBO_PC_NONE :
 			myship.decode_input();
 	KOBO_player_controls ctrl = KOBO_PC_NONE;
@@ -1142,10 +1250,12 @@ void _manage::run_game()
 	  case RPM_NONE:
 		break;
 	}
+	sim_frame_start();
 	myship.control(ctrl);
 	myship.move();
 	enemies.move();
 	myship.check_base_bolts();
+	sim_frame_end();
 	if(replay && prefs->replaydebug)
 		switch(replaymode)
 		{
@@ -1162,6 +1272,11 @@ void _manage::run_game()
 	update();
 	wfire->update();
 	++playtime;
+
+	// Time Flux: after the explosion, offer a rewind
+	if(death_timer && !--death_timer && (replaymode == RPM_PLAY))
+		freeze(true);
+
 	if(lastctrl == ctrlin)
 		++ctrltimer;
 	else
@@ -1179,7 +1294,8 @@ void _manage::run_game()
 //
 KOBO_player_controls _manage::controls_play(KOBO_player_controls ctrl)
 {
-	if(replay && myship.alive())
+	// Classic mode keeps recording through a death, as play goes on
+	if(replay && (myship.alive() || respawn_timer))
 		replay->write(ctrl);
 	return ctrl;
 }
@@ -1418,7 +1534,10 @@ void _manage::run()
 		}
 		break;
 	  case GS_PLAYING:
-		run_game();
+		if(frozen)
+			run_freeze();
+		else
+			run_game();
 		break;
 	  case GS_GAMEOVER:
 	  case GS_REPLAYEND:
@@ -1551,6 +1670,8 @@ void _manage::abort_game()
 	state(GS_NONE);
 	replaymode = RPM_NONE;
 	is_paused = false;
+	frozen = false;
+	death_timer = respawn_timer = 0;
 }
 
 
@@ -1597,6 +1718,31 @@ void _manage::background(bool bg)
 
 void _manage::lost_myship()
 {
+	if((gamemode == KOBO_GM_CLASSIC) && (ships > 1))
+	{
+		// Lose a ship, and respawn after the explosion. This is game
+		// logic, so it's the same in replays.
+		--ships;
+		respawn_timer = KOBO_CLASSIC_RESPAWN_DELAY;
+		flash_ships_count = 60;
+		if(replay && (replaymode == RPM_PLAY))
+			++replay->deaths;
+		log_printf(ULOG, "Player lost a ship at stage %d; %d left.\n",
+				selected_stage, ships);
+		return;
+	}
+	if(gamemode == KOBO_GM_CLASSIC)
+		ships = 0;
+	else if((replaymode == RPM_PLAY) && !demo_mode)
+	{
+		// Time Flux: let the explosion play, then freeze time
+		death_timer = KOBO_FLUX_DEATH_DELAY;
+		if(replay)
+			++replay->deaths;
+		log_printf(ULOG, "Player died at stage %d; %d Flux banked.\n",
+				selected_stage, flux);
+		return;
+	}
 	state(GS_GAMEOVER);
 	if(replaymode != RPM_PLAY)	// Handled by UI state when playing!
 		delay_count = KOBO_GAMEOVER_TIMEOUT;
@@ -1628,6 +1774,7 @@ void _manage::destroyed_a_core()
 	{
 		// Award extra health bonus for stage cleared!
 		myship.health_bonus(game.stage_cleared_health_bonus);
+		flux_award(KOBO_FLUX_STAGE);
 		myship.state(SHIP_INVULNERABLE);
 
 		// Don't try to leave if we're in rewind!
@@ -1658,6 +1805,16 @@ void _manage::add_score(int sc)
 		score = GIGA - 1;
 	else if(!prefs->cheats())
 	{
+		if((gamemode == KOBO_GM_CLASSIC) && (bonus_next > 0) &&
+				(score >= (unsigned)bonus_next))
+		{
+			bonus_next += game.bonus_every;
+			if(ships < 99)
+				++ships;
+			flash_ships_count = 60;
+			if(replaymode == RPM_PLAY)
+				sound.ui_play(S_UI_READY);
+		}
 		if(score >= highscore)
 		{
 			if(flash_score_count == 0)
@@ -1675,4 +1832,300 @@ void _manage::reenter()
 	put_info();
 	put_score();
 	set_bars();
+}
+
+
+/*----------------------------------------------------------
+	Game modes
+----------------------------------------------------------*/
+
+// Called before each logic frame is simulated, live or replayed.
+void _manage::sim_frame_start()
+{
+	if(gamemode != KOBO_GM_FLUX)
+		return;
+
+	// Pay for rewinds that resumed at this frame
+	if(replay && (flux_settled != playtime))
+	{
+		flux -= replay->flux_debit_at(playtime);
+		if(flux < 0)
+			flux = 0;
+		flux_settled = playtime;
+	}
+
+	// Remember the bank, so frozen time knows how far back it can go
+	if(flux_hist.size() <= playtime)
+		flux_hist.resize(playtime + 1024);
+	flux_hist[playtime] = flux;
+}
+
+
+// Called after each logic frame is simulated, live or replayed.
+void _manage::sim_frame_end()
+{
+	if(respawn_timer && !--respawn_timer)
+		respawn();
+}
+
+
+// Classic mode: a new ship at the stage start, Kobo Deluxe style. Destroyed
+// bases stay destroyed; everything else is set up anew.
+void _manage::respawn()
+{
+	myship.init(true);
+	enemies.init();
+	remaining_cores = screen.prepare();
+	screen.generate_fixed_enemies();
+	myship.state(SHIP_SHIELD);
+	scroll_jump = true;
+	if(replaymode == RPM_PLAY)
+		sound.ui_play(S_UI_READY);
+}
+
+
+void _manage::flux_award(int amount)
+{
+	if(gamemode != KOBO_GM_FLUX)
+		return;
+	flux += amount;
+	if(flux > KOBO_FLUX_MAX)
+		flux = KOBO_FLUX_MAX;
+}
+
+
+void _manage::flux_kill(int enemy_kind)
+{
+	switch(enemy_kind)
+	{
+	  case KOBO_EK_BULLET1:
+	  case KOBO_EK_BULLET2:
+	  case KOBO_EK_BULLET3:
+	  case KOBO_EK_PIPEIN:
+	  case KOBO_EK_PIPEOUT:
+		break;
+	  case KOBO_EK_ROCK:
+		flux_award(KOBO_FLUX_ROCK);
+		break;
+	  case KOBO_EK_CANNON:
+		flux_award(KOBO_FLUX_NODE);
+		break;
+	  case KOBO_EK_CORE:
+		flux_award(KOBO_FLUX_CORE);
+		break;
+	  default:
+		flux_award(KOBO_FLUX_ENEMY);
+		break;
+	}
+}
+
+
+int _manage::flux_banked()
+{
+	if(!frozen)
+		return flux;
+	if(freeze_cursor >= flux_hist.size())
+		return flux;
+	int f = flux_hist[freeze_cursor] - (int)(freeze_head - freeze_cursor);
+	if(freeze_cursor == freeze_head)
+		f = flux;
+	return f < 0 ? 0 : f;
+}
+
+
+void _manage::game_over()
+{
+	frozen = false;
+	death_timer = 0;
+	replaymode = RPM_PLAY;
+	state(GS_GAMEOVER);
+	log_printf(ULOG, "Game over at stage %d; score: %d\n",
+			selected_stage, score);
+	if(replay)
+		finalize_replay();
+	if(campaign)
+		campaign->save();
+}
+
+
+// Enter frozen time at the present. When 'dead' is set, the ship has been
+// destroyed, and play can only resume at some earlier frame.
+void _manage::freeze(bool dead)
+{
+	if(!replay)
+		return;
+
+	freeze_dead = dead;
+	if(dead)
+	{
+		// The present is the frame the ship died. The world has run
+		// on past it while it exploded, so it needs a replay.
+		freeze_head = replay->recorded();
+		sim_valid = false;
+		sim_pos = (unsigned)-1;
+	}
+	else
+	{
+		freeze_head = playtime;
+		if(sim_pos != playtime)
+			sim_valid = false;
+		sim_pos = playtime;
+		if(flux_hist.size() <= freeze_head)
+			flux_hist.resize(freeze_head + 1024);
+		flux_hist[freeze_head] = flux;
+		flux_settled = playtime;
+	}
+
+	// How far back can the bank take us? (1 Flux per frame)
+	unsigned p = freeze_head;
+	while(p > 0 && (p - 1) < flux_hist.size() &&
+			flux_hist[p - 1] >= (int)(freeze_head - (p - 1)))
+		--p;
+	freeze_min = p;
+
+	if(dead)
+	{
+		if(freeze_head < freeze_min + KOBO_FLUX_DEATH_MIN)
+		{
+			// Not enough Flux to save the ship
+			game_over();
+			return;
+		}
+		if(freeze_head >= freeze_min + KOBO_FLUX_DEATH_REWIND)
+			freeze_cursor = freeze_head - KOBO_FLUX_DEATH_REWIND;
+		else
+			freeze_cursor = freeze_min;
+	}
+	else
+		freeze_cursor = freeze_head;
+
+	frozen = true;
+	freeze_total = freeze_timer = KOBO_FLUX_FREEZE_TIME / game.speed;
+	scrub_hold = 0;
+	preview_wait = 0;
+	gamecontrol.mouse_mute(true);
+	sound.g_new_scene(100);
+	set_mute(true);
+	sound.ui_play(S_UI_PAUSE);
+	log_printf(ULOG, "Frozen time at frame %d (reach %d, %d Flux)\n",
+			freeze_head, freeze_min, flux);
+}
+
+
+// Show the world as of 'frame', replaying from the stage start if need be
+void _manage::resim_to(unsigned frame)
+{
+	if(!sim_valid || (frame < sim_pos))
+	{
+		quiet_init = true;
+		init_game(replay);
+		quiet_init = false;
+		sim_valid = true;
+		wfire->Clear(true, false);	// No explosions from the future
+	}
+	replaymode = RPM_PLAY;
+	advance(frame);
+	replaymode = RPM_PLAY;
+	sim_pos = frame;
+}
+
+
+void _manage::run_freeze()
+{
+	if(in_background)
+	{
+		update();
+		return;
+	}
+
+	// Scrub controls: rewind/forward buttons, or the stick
+	int dir = myship.decode_input() & KOBO_PC_DIR;
+	bool back = gamecontrol.down(BTN_REWIND) ||
+			(dir == 6) || (dir == 7) || (dir == 8);
+	bool fwd = gamecontrol.down(BTN_FORWARD) ||
+			(dir == 2) || (dir == 3) || (dir == 4);
+	unsigned maxc = freeze_dead ? freeze_head - 1 : freeze_head;
+	if(back != fwd)
+	{
+		++scrub_hold;
+		unsigned step = KOBO_FLUX_SCRUB_MIN +
+				scrub_hold / KOBO_FLUX_SCRUB_ACCEL;
+		if(step > KOBO_FLUX_SCRUB_MAX)
+			step = KOBO_FLUX_SCRUB_MAX;
+		if(back)
+			freeze_cursor = (freeze_cursor > freeze_min + step) ?
+					freeze_cursor - step : freeze_min;
+		else
+			freeze_cursor = (freeze_cursor + step < maxc) ?
+					freeze_cursor + step : maxc;
+	}
+	else
+		scrub_hold = 0;
+
+	// Preview where we'd land; throttled while scrubbing back, as that
+	// means replaying the stage from the start.
+	if(freeze_cursor != sim_pos)
+	{
+		bool incremental = sim_valid && (freeze_cursor > sim_pos);
+		if(preview_wait > 0 && !incremental && (back != fwd))
+			--preview_wait;
+		else
+		{
+			resim_to(freeze_cursor);
+			preview_wait = KOBO_FLUX_PREVIEW_RATE;
+		}
+	}
+
+	// Resume on fire, or when frozen time runs out
+	if(gamecontrol.pressed(BTN_PRIMARY) || gamecontrol.pressed(BTN_SELECT)
+			|| (--freeze_timer <= 0))
+		unfreeze();
+	else
+		update();
+}
+
+
+void _manage::unfreeze()
+{
+	if(freeze_cursor != sim_pos)
+		resim_to(freeze_cursor);
+
+	if(sim_valid)
+	{
+		// The world was replayed to the cursor. Pay any earlier debits
+		// at this frame, then pay for this jump, and record from here.
+		if(flux_settled != freeze_cursor)
+		{
+			flux -= replay->flux_debit_at(freeze_cursor);
+			flux_settled = freeze_cursor;
+		}
+		replay->punchin();
+		int cost = freeze_head - freeze_cursor;
+		if(cost > 0)
+		{
+			replay->add_flux_debit(freeze_cursor, cost);
+			flux -= cost;
+		}
+		if(flux < 0)
+			flux = 0;
+		if(flux_hist.size() <= freeze_cursor)
+			flux_hist.resize(freeze_cursor + 1024);
+		flux_hist[freeze_cursor] = flux;
+		log_printf(ULOG, "Resumed at frame %d; spent %d Flux, %d left\n",
+				freeze_cursor, cost, flux);
+	}
+	// else: we never left the present, and are still recording there
+
+	frozen = false;
+	freeze_dead = false;
+	sim_valid = false;
+	death_timer = 0;
+	replaymode = RPM_PLAY;
+	state(GS_PLAYING);
+	gengine->period(game.speed);
+	sound.g_pitch(0.0f);
+	set_volume(1.0f);
+	set_mute(false);
+	gamecontrol.mouse_mute(false);
+	sound.ui_play(S_UI_PLAY);
 }

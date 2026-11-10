@@ -46,10 +46,11 @@
 
 #include "pfile.h"
 #include "gamectl.h"
+#include <vector>
 
 // Replay header
 #define	KOBO_PF_REPH_4CC	MAKE_4CC('R', 'E', 'P', 'H')
-#define	KOBO_PF_REPH_VERSION	1
+#define	KOBO_PF_REPH_VERSION	2	// 2: game mode, ships, Flux
 
 // Replay data
 #define	KOBO_PF_REPD_4CC	MAKE_4CC('R', 'E', 'P', 'D')
@@ -129,6 +130,22 @@ class KOBO_replay
 
 	// Total number of deaths/rewinds on this stage during this campaign
 	int32_t		deaths;
+
+	// Game mode (KOBO_gamemodes) and its stage entry state
+	int32_t		mode;
+	int32_t		ships;		// Classic: ships left, current included
+	int32_t		bonus_next;	// Classic: score for the next extra ship
+	int32_t		flux;		// Time Flux: Flux banked at stage entry
+
+	// Time Flux spent by rewinds, applied as playback reaches each frame
+	struct flux_debit_t
+	{
+		uint32_t	frame;
+		int32_t		amount;
+	};
+	std::vector<flux_debit_t> flux_debits;
+	void add_flux_debit(unsigned frame, int amount);
+	int flux_debit_at(unsigned frame);	// Sum of debits at 'frame'
 
 	// Record
 	void write(KOBO_player_controls ctrl);	// Record + advance

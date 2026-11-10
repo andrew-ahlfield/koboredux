@@ -2413,15 +2413,22 @@ static gc_targets_t pad_map_button(int button)
 		return BTN_PRIMARY;
 	  case PAD_TRIGGER_RIGHT:
 		// Right side steps menu values up; the left side steps down,
-		// as secondary and tertiary fire already do in menus.
-		return pad_in_menu() ? BTN_INC : BTN_PRIMARY;
+		// as secondary and tertiary fire already do in menus. In
+		// frozen time, it scrubs forward again.
+		if(pad_in_menu())
+			return BTN_INC;
+		return manage.flux_frozen() ? BTN_FORWARD : BTN_PRIMARY;
+	  case PAD_TRIGGER_LEFT:
+		// In Time Flux games, the left trigger freezes and rewinds time
+		if(!pad_in_menu() && manage.flux_mode())
+			return BTN_REWIND;
+		return BTN_SECONDARY;
 	  case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
 		return pad_in_menu() ? BTN_INC : BTN_TERTIARY;
 	  case SDL_CONTROLLER_BUTTON_B:
 		// Back out of menus, as players expect of B
 		return pad_in_menu() ? BTN_MENU : BTN_SECONDARY;
 	  case SDL_CONTROLLER_BUTTON_X:
-	  case PAD_TRIGGER_LEFT:
 		return BTN_SECONDARY;
 	  case SDL_CONTROLLER_BUTTON_Y:
 		return pad_in_menu() ? BTN_NONE : BTN_TERTIARY;

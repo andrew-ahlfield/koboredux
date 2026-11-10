@@ -26,8 +26,10 @@
 #define _KOBO_MANAGE_H_
 
 #include "SDL.h"
+#include <vector>
 #include "campaign.h"
 #include "game.h"
+#include "config.h"
 
 enum KOBO_replaymodes
 {
@@ -123,6 +125,48 @@ class _manage
 	// Sound
 	static float sfx_volume;
 	static bool sfx_mute;
+
+	// Game mode (KOBO_gamemodes) of the game in progress
+	static int gamemode;
+
+	// Classic mode
+	static int ships;		// Ships left, including the current one
+	static int bonus_next;		// Score for the next extra ship
+	static int respawn_timer;	// Frames until respawn; 0 if none
+	static int flash_ships_count;
+
+	// Time Flux mode
+	static int flux;		// Flux in the bank
+	static unsigned flux_settled;	// Frame whose rewind debits are paid
+	static std::vector<int> flux_hist;	// Flux at the start of frames
+	static int death_timer;		// Frames of explosion before freeze
+
+	// Frozen time
+	static bool frozen;
+	static bool freeze_dead;	// Ship died; resuming at head is fatal
+	static bool sim_valid;		// World is replay driven at sim_pos
+	static unsigned freeze_head;	// Latest frame; the "present"
+	static unsigned freeze_cursor;	// Frame we will resume at
+	static unsigned freeze_min;	// Earliest frame the Flux can reach
+	static unsigned sim_pos;	// Frame the world is showing
+	static int freeze_timer;	// Frames of frozen time left
+	static int freeze_total;
+	static int scrub_hold;		// Frames a scrub control has been held
+	static int preview_wait;
+
+	// Restarting stages
+	static bool quiet_init;		// init_game() for a rewind preview
+	static int entry_health;	// Ship state to restore, or -1
+	static int entry_charge;
+
+	static void sim_frame_start();
+	static void sim_frame_end();
+	static void respawn();
+	static void freeze(bool dead);
+	static void run_freeze();
+	static void resim_to(unsigned frame);
+	static void unfreeze();
+	static void game_over();
 
 	static void put_player_stats();
 	static void put_info();
@@ -253,6 +297,39 @@ class _manage
 	static void screenshake(float mag_x, float mag_y, float fade);
 	static void stop_screenshake();
 	static void kill_screenshake();
+
+	// Game modes
+	static int game_mode()		{ return gamemode; }
+	static bool flux_mode()
+	{
+		return game_in_progress() && (gamemode == KOBO_GM_FLUX);
+	}
+	static bool classic_mode()
+	{
+		return game_in_progress() && (gamemode == KOBO_GM_CLASSIC);
+	}
+	static void continue_game_over();	// Restart stage after game over
+
+	// Classic mode
+	static int ships_left()		{ return ships; }
+	static bool ships_flashing()
+	{
+		return (flash_ships_count > 0) && (flash_ships_count & 4);
+	}
+
+	// Time Flux mode
+	static bool flux_frozen()	{ return frozen; }
+	static bool flux_rescue()	{ return frozen && freeze_dead; }
+	static int flux_banked();		// Flux, after any pending rewind
+	static float flux_time_left()
+	{
+		return freeze_total ? (float)freeze_timer / freeze_total : 0.0f;
+	}
+	static unsigned flux_head()	{ return freeze_head; }
+	static unsigned flux_cursor()	{ return freeze_cursor; }
+	static unsigned flux_reach()	{ return freeze_min; }
+	static void flux_kill(int enemy_kind);
+	static void flux_award(int amount);
 
 	// Game logic interface
 	static void lost_myship();

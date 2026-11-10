@@ -102,6 +102,10 @@ gc_targets_t gamecontrol_t::mapsrc(SDL_Keysym sym, int &src)
 		return BTN_SECONDARY;
 	if(sym.scancode == prefs->keyboard_tertiary)
 		return BTN_TERTIARY;
+	if(sym.scancode == prefs->keyboard_rewind)
+		return BTN_REWIND;
+	if(sym.scancode == prefs->keyboard_forward)
+		return BTN_FORWARD;
 
 	// Hardwired key bindings
 	++src;

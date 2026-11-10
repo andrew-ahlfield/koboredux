@@ -14,3 +14,20 @@ While Kobo Redux is a proprietary title, it is implemented using portable Free/O
 ------
 
 *The proprietary sound and graphics themes are not included in the source tree! However, placeholder GPL themes "chip" (sound) and "mono" (graphics) are included, making the game mostly playable with no external data.*
+
+Game Modes
+----------
+
+Pick the mode for new campaigns under *Options > Game > Game Mode*.
+
+**Time Flux** (default). Destroying things banks *Flux*: a little for enemy craft, more for asteroids, more again for base nodes and cores, and a big payout for clearing a stage. The bank holds about 18 seconds. Hold *Rewind* to freeze time and scrub back; every frame you go back costs one frame of Flux. Hold *Forward* to scrub toward the present again, which refunds it. Press *Fire* to dive back in at the chosen moment. Frozen time only lasts five seconds, then play resumes wherever you are. When your ship is destroyed, time freezes on its own and offers to rewind you out of trouble; with too little Flux to save the ship, it's game over.
+
+**Classic**. Lives and continues in the style of Kobo Deluxe. You start with three to five ships depending on skill, and earn extra ships with score. Losing a ship respawns you at the stage start with full health; bases you destroyed stay destroyed. When the last ship goes, *Continue?* restarts the stage with a full stock of ships and the score back at zero.
+
+| Action        | Keyboard (default) | Gamepad        |
+|---------------|--------------------|----------------|
+| Rewind time   | A                  | Left trigger   |
+| Forward time  | S                  | Right trigger (while frozen) |
+| Resume        | Fire (C)           | A / Right trigger outside frozen time |
+
+The stick or arrow keys also scrub left and right while time is frozen. Keyboard keys can be rebound under *Options > Control Bindings*.

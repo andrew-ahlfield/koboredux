@@ -442,6 +442,7 @@ inline void KOBO_enemy::hit(int dmg)
 	if(splash_damage)
 		enemies.splash_damage(x, y, splash_damage);
 	manage.add_score(ek->score);
+	manage.flux_kill(ek->eki);
 	(this->*(ek->kill))();
 }
 

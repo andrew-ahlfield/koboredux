@@ -22,6 +22,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#include "config.h"
 #include "kobolog.h"
 #include "prefs.h"
 #include "gfxengine.h"
@@ -109,6 +110,10 @@ void prefs_t::init()
 			desc("Keyboard Secondary Fire");
 	key("keyboard_tertiary", keyboard_tertiary, SDL_SCANCODE_Z);
 			desc("Keyboard Tertiary Fire");
+	key("keyboard_rewind", keyboard_rewind, SDL_SCANCODE_A);
+			desc("Keyboard Rewind Time");
+	key("keyboard_forward", keyboard_forward, SDL_SCANCODE_S);
+			desc("Keyboard Forward Time");
 
 	section("Audio");
 	yesno("sound", sound, 1); desc("Enable Sound");
@@ -147,6 +152,7 @@ void prefs_t::init()
 	yesno("titledemos", titledemos, 1); desc("Play Demos On Title Screen");
 
 	section("Game");
+	key("gamemode", gamemode, KOBO_DEFAULT_GAMEMODE); desc("Game Mode");
 	key("countdown", countdown, 5); desc("Get Ready Countdown");
 	key("cont_countdown", cont_countdown, 9); desc("Continue Countdown");
 	key("autocontinue", autocontinue, 5);

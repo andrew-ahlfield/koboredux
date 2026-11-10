@@ -51,6 +51,38 @@ void game_t::set(game_types_t tp, skill_levels_t sk)
 		speed /= prefs->cheat_speed;
 	splash_damage_multiplier = 2;
 
+	// Classic mode lives, after Kobo Deluxe: more ships and earlier
+	// extra ships on the gentler skill levels.
+	switch(sk)
+	{
+	  case SKILL_NEWBIE:
+		lives = 5;
+		bonus_first = 5000;
+		bonus_every = 7000;
+		break;
+	  case SKILL_EASY:
+		lives = 5;
+		bonus_first = 8000;
+		bonus_every = 8000;
+		break;
+	  case SKILL_NORMAL:
+	  default:
+		lives = 5;
+		bonus_first = 10000;
+		bonus_every = 10000;
+		break;
+	  case SKILL_HARD:
+		lives = 4;
+		bonus_first = 10000;
+		bonus_every = 12000;
+		break;
+	  case SKILL_INSANE:
+		lives = 3;
+		bonus_first = 15000;
+		bonus_every = 15000;
+		break;
+	}
+
 	// Player ship: Health and damage
 	top_speed = PIXEL2CS(4);
 	cruise_speed = PIXEL2CS(2);

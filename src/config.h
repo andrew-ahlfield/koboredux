@@ -247,6 +247,46 @@ static inline int kobo_wrapdist(int a, int b, int w)
 #define	KOBO_PAD_TRIGGER_PRESS	16384	// Trigger travel (of 32767) that fires
 #define	KOBO_PAD_TRIGGER_RELEASE 8192	// ...and that must drop below to stop
 
+/*
+ * Game modes
+ *
+ *	KOBO_GM_FLUX: Destroying things banks Time Flux, which is spent to
+ *	rewind time. Rewinding is done in frozen time, which only lasts
+ *	so long before play resumes.
+ *
+ *	KOBO_GM_CLASSIC: Lives and continues, in the style of Kobo Deluxe.
+ */
+enum KOBO_gamemodes
+{
+	KOBO_GM_FLUX = 0,
+	KOBO_GM_CLASSIC = 1
+};
+#define	KOBO_DEFAULT_GAMEMODE	KOBO_GM_FLUX
+
+/*
+ * Time Flux (all amounts in logic frames of rewind; 1 Flux buys 1 frame)
+ *
+ *	Rewards are listed in increasing order, as the targets get rarer.
+ */
+#define	KOBO_FLUX_MAX		600	// Bank capacity (about 18 s)
+#define	KOBO_FLUX_START		300	// Bank on a new game or continue
+#define	KOBO_FLUX_ENEMY		8	// Any enemy craft
+#define	KOBO_FLUX_ROCK		15	// Asteroid
+#define	KOBO_FLUX_NODE		30	// Base node (cannon)
+#define	KOBO_FLUX_CORE		90	// Base core
+#define	KOBO_FLUX_STAGE		200	// Stage cleared
+#define	KOBO_FLUX_FREEZE_TIME	5000	// ms of frozen time per rewind
+#define	KOBO_FLUX_DEATH_REWIND	100	// Default rewind offered on death
+#define	KOBO_FLUX_DEATH_MIN	33	// Least rewind that can save a ship
+#define	KOBO_FLUX_DEATH_DELAY	45	// Frames of explosion before freezing
+#define	KOBO_FLUX_SCRUB_MIN	1	// Scrub speed when starting to hold
+#define	KOBO_FLUX_SCRUB_MAX	10	// Top scrub speed (frames per frame)
+#define	KOBO_FLUX_SCRUB_ACCEL	8	// Frames held per +1 scrub speed
+#define	KOBO_FLUX_PREVIEW_RATE	3	// Frames between scrub previews
+
+/* Classic mode */
+#define	KOBO_CLASSIC_RESPAWN_DELAY	70	// Frames from death to respawn
+
 /* Death and end-of-replay sequence timings (logic frames) */
 #define	KOBO_LEVELDONE_TIMEOUT	50
 #define	KOBO_REPLAYEND_TIMEOUT	50

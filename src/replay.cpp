@@ -76,6 +76,28 @@ void KOBO_replay::clear()
 	seed = 0;
 	health = charge = score = 0;
 	end_health = end_charge = end_score = deaths = 0;
+	mode = ships = bonus_next = flux = 0;
+	flux_debits.clear();
+}
+
+
+void KOBO_replay::add_flux_debit(unsigned frame, int amount)
+{
+	flux_debit_t d;
+	d.frame = frame;
+	d.amount = amount;
+	flux_debits.push_back(d);
+	_modified = true;
+}
+
+
+int KOBO_replay::flux_debit_at(unsigned frame)
+{
+	int sum = 0;
+	for(unsigned i = 0; i < flux_debits.size(); ++i)
+		if(flux_debits[i].frame == frame)
+			sum += flux_debits[i].amount;
+	return sum;
 }
 
 
@@ -196,6 +218,14 @@ void KOBO_replay::punchin()
 		gst_last = gst_last->next;
 	}
 
+	// Rewinds made from the discarded future never happened. (One that
+	// resumed at this very frame did, as we're resuming after it.)
+	for(unsigned i = 0; i < flux_debits.size(); )
+		if(flux_debits[i].frame > punchframe)
+			flux_debits.erase(flux_debits.begin() + i);
+		else
+			++i;
+
 	// Truncate replay data, and make sure we have a properly sized buffer
 	bufrecord = punchframe;
 	if(bufsize < KOBO_REPLAY_BUFFER)
@@ -260,6 +290,11 @@ void KOBO_replay::log_dump(int level, KOBO_replay_logdump rld)
 		log_printf(level, " |  end_charge: %d\n", end_charge);
 		log_printf(level, " |   end_score: %d\n", end_score);
 		log_printf(level, " |      deaths: %d\n", deaths);
+		log_printf(level, " |        mode: %d\n", mode);
+		log_printf(level, " |       ships: %d\n", ships);
+		log_printf(level, " |  bonus_next: %d\n", bonus_next);
+		log_printf(level, " |        flux: %d (%d debits)\n", flux,
+				(int)flux_debits.size());
 		const char *cmp = "<unknown>";
 		switch(compat)
 		{
@@ -394,6 +429,34 @@ bool KOBO_replay::load_reph(pfile_t *pf)
 	// Total number of deaths/rewinds on this stage during this campaign
 	pf->read(deaths);
 
+	// Game mode and its state (REPH v2 and later)
+	flux_debits.clear();
+	if(pf->chunk_version() >= 2)
+	{
+		pf->read(mode);
+		pf->read(ships);
+		pf->read(bonus_next);
+		pf->read(flux);
+		int32_t nd = 0;
+		pf->read(nd);
+		for(int i = 0; (i < nd) && !pf->status(); ++i)
+		{
+			flux_debit_t d;
+			int32_t f = 0;
+			pf->read(f);
+			pf->read(d.amount);
+			d.frame = f;
+			flux_debits.push_back(d);
+		}
+	}
+	else
+	{
+		// Older campaigns predate game modes; they rewind freely
+		mode = 0;
+		ships = bonus_next = 0;
+		flux = -1;
+	}
+
 	pf->chunk_end();
 
 	if(prefs->debug)
@@ -515,6 +578,18 @@ bool KOBO_replay::save(pfile_t *pf)
 
 	// Total number of deaths/rewinds on this stage during this campaign
 	pf->write(deaths);
+
+	// Game mode and its state
+	pf->write(mode);
+	pf->write(ships);
+	pf->write(bonus_next);
+	pf->write(flux);
+	pf->write((int32_t)flux_debits.size());
+	for(unsigned i = 0; i < flux_debits.size(); ++i)
+	{
+		pf->write((int32_t)flux_debits[i].frame);
+		pf->write(flux_debits[i].amount);
+	}
 
 	pf->chunk_end();
 

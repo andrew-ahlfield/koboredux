@@ -85,6 +85,8 @@ class prefs_t : public config_parser_t
 	int	keyboard_primary;
 	int	keyboard_secondary;
 	int	keyboard_tertiary;
+	int	keyboard_rewind;	//Time Flux: scrub back / freeze
+	int	keyboard_forward;	//Time Flux: scrub forward
 
 	// Audio
 	cfg_string_t	audiodriver;	//Name/options for a2_NewDriver()
@@ -123,6 +125,7 @@ class prefs_t : public config_parser_t
 
 	// Game
 	int	countdown;	//"Get Ready" countdown
+	int	gamemode;	//KOBO_gamemodes, for new games
 	int	cont_countdown;	//"Continue?" countdown
 	int	autocontinue;	//Turn "Continue?" into delay-to-replay
 

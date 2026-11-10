@@ -325,6 +325,8 @@ void bindings_options_t::build()
 	keybinding("Secondary Fire", &prf->keyboard_secondary);
 	if(prf->tertiary_button)
 		keybinding("Tertiary Fire", &prf->keyboard_tertiary);
+	keybinding("Rewind Time", &prf->keyboard_rewind);
+	keybinding("Forward Time", &prf->keyboard_forward);
 	space(2);
 
 	// Joystick bindings
@@ -608,8 +610,26 @@ void game_options_t::build()
 		item("8 seconds", 8);
 		item("9 seconds", 9);
 		item("Wait Forever", 10);
-	list("Death To Rewind/Retry Delay", &prf->autocontinue, OS_REBUILD);
-		item("No Delay", 0);
+	list("Game Mode", &prf->gamemode, OS_REBUILD);
+		item("Time Flux", KOBO_GM_FLUX);
+		item("Classic", KOBO_GM_CLASSIC);
+	xoffs = 0.5;
+	font(B_SMALL_FONT);
+	if(prf->gamemode == KOBO_GM_CLASSIC)
+	{
+		label("Lives and continues, a la Kobo Deluxe. Lose a ship and");
+		label("respawn at the stage start; score earns extra ships.");
+	}
+	else
+	{
+		label("Destroying things banks Flux. Spend it to rewind time,");
+		label("in frozen time that only lasts a few seconds.");
+	}
+	label("Applies to new campaigns.");
+	font(0);
+	xoffs = 0.55;
+	space();
+	list("\"Continue?\" Countdown", &prf->cont_countdown, 0);
 		item("1 second", 1);
 		item("2 seconds", 2);
 		item("3 seconds", 3);
@@ -619,23 +639,7 @@ void game_options_t::build()
 		item("7 seconds", 7);
 		item("8 seconds", 8);
 		item("9 seconds", 9);
-		item("Wait For Player", 10);
-	if(!prf->autocontinue)
-	{
-		list("\"Continue?\" Countdown", &prf->cont_countdown, 0);
-			// Made redundant by autocontinue!
-			// item("Quick Continue", 0);
-			item("1 second", 1);
-			item("2 seconds", 2);
-			item("3 seconds", 3);
-			item("4 seconds", 4);
-			item("5 seconds", 5);
-			item("6 seconds", 6);
-			item("7 seconds", 7);
-			item("8 seconds", 8);
-			item("9 seconds", 9);
-			item("Wait Forever", 10);
-	}
+		item("Wait Forever", 10);
 
 	xoffs = 0.5;
 	space(2);

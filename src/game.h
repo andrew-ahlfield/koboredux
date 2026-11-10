@@ -128,6 +128,11 @@ class game_t
 	int	stage_cleared_health_bonus;
 	int	splash_damage_multiplier;
 
+	// Classic mode lives
+	int	lives;		// Ships on a new game or continue
+	int	bonus_first;	// Score for the first extra ship
+	int	bonus_every;	// Score between further extra ships
+
 	// Player ship: Health and damage
 	int	top_speed;	// Maximum speed when pushing stick (24:8)
 	int	cruise_speed;	// Speed with stick in neutral (24:8)

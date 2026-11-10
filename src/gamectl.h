@@ -58,6 +58,9 @@ enum gc_targets_t
 	BTN_PAUSE,	// Pause or P; also used as an internal event.
 	BTN_CLOSE,	// Window close button, ALT-F4,...
 
+	BTN_REWIND,	// Time Flux: freeze time / scrub back
+	BTN_FORWARD,	// Time Flux: scrub forward again
+
 	// When using ingame mouse control, these are passed to the GUI, so we
 	// can trap them explicitly where desired. When not using ingame mouse
 	// control, mouse buttons generate BTN_SELECT or BTN_EXIT instead.
