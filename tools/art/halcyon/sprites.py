@@ -1,0 +1,583 @@
+"""Ships, enemies and projectiles for the Halcyon theme."""
+
+import math
+import numpy as np
+from PIL import Image
+
+from .render import (Part, render, sheet, rotations, glow_dot, sd_circle,
+                     sd_ellipse, sd_box, sd_capsule, sd_poly, sd_union,
+                     sd_sub, sd_inter, sd_ring, mirror_x, sd_rot)
+from .palette import RAMPS, rgb
+from . import noise
+
+
+# ---------------------------------------------------------------------------
+# Player: "Halcyon" interceptor. Twin-ended gun spine (Kobo fires nose and
+# tail), swept wings, bubble canopy, red wingtip pods.
+# ---------------------------------------------------------------------------
+
+def player_parts():
+    wing = mirror_x(sd_poly([(1.5, -3.5), (10.5, 4.0), (10.5, 6.5),
+                             (1.5, 4.5)]))
+    tip = mirror_x(sd_box(9.6, 4.6, 1.3, 2.6, 0.6))
+    body = sd_poly([(0, -10.5), (2.6, -5), (3.2, 2), (2.4, 9.5), (-2.4, 9.5),
+                    (-3.2, 2), (-2.6, -5)])
+    spine = sd_capsule(0, -11.5, 0, 11.5, 0.9)
+    canopy = sd_ellipse(0, -3.2, 1.6, 3.0)
+    nacelle = mirror_x(sd_capsule(4.4, 1.0, 4.4, 7.5, 1.4))
+    flame = mirror_x(sd_circle(4.4, 8.4, 1.1))
+    stripe = mirror_x(sd_poly([(5.5, 1.2), (8.2, 3.6), (8.2, 4.8),
+                               (5.5, 2.6)]))
+    return [
+        Part(spine, "dark", z=0.0, h=0.6, bevel=0.8, dome=True),
+        Part(wing, "steel", z=0.2, h=0.6, bevel=1.6, spec=0.2),
+        Part(stripe, "red", z=0.8, h=0.2, bevel=0.6),
+        Part(tip, "red", z=0.6, h=0.8, bevel=1.0, dome=True),
+        Part(nacelle, "steel", z=0.5, h=1.0, bevel=1.4, dome=True),
+        Part(flame, "fire", glow=True, bevel=1.1, bright=0.1),
+        Part(body, "hull", z=0.6, h=1.6, bevel=2.6, dome=True, spec=0.5),
+        Part(canopy, "glass", z=1.8, h=1.0, bevel=1.4, dome=True, spec=0.9),
+    ]
+
+
+def player():
+    return sheet(rotations(player_parts, 64, 24, 24), 8)
+
+
+# ---------------------------------------------------------------------------
+# Enemy 1: dart missile (16x16, 16 directions)
+# ---------------------------------------------------------------------------
+
+def dart_parts(body_mat, fin_mat, glow_mat="fire", fat=1.0):
+    body = sd_capsule(0, -5.0, 0, 4.0, 1.7 * fat)
+    nose = sd_poly([(0, -7.5), (1.6 * fat, -4.5), (-1.6 * fat, -4.5)])
+    fins = mirror_x(sd_poly([(0.8, 1.0), (4.6, 5.5), (4.6, 6.5),
+                             (0.8, 4.5)]))
+    flame = sd_circle(0, 6.0, 1.3)
+    band = sd_box(0, -2.0, 1.9 * fat, 0.6)
+    return [
+        Part(fins, fin_mat, z=0.0, h=0.5, bevel=1.0),
+        Part(flame, glow_mat, glow=True, bevel=1.3),
+        Part(body, body_mat, z=0.4, h=1.4, bevel=2.0, dome=True, spec=0.6),
+        Part(band, fin_mat, z=1.3, h=0.3, bevel=0.6),
+        Part(nose, fin_mat, z=0.6, h=1.0, bevel=1.4, dome=True),
+    ]
+
+
+def missile1():
+    return sheet(rotations(lambda: dart_parts("ice", "red"), 16, 16, 16), 4)
+
+
+def missile2():
+    # Enemy 3: heavy torpedo, crimson
+    def b():
+        body = sd_capsule(0, -4.5, 0, 4.0, 2.6)
+        cap = sd_circle(0, -4.6, 1.6)
+        fins = mirror_x(sd_poly([(1.5, 0.5), (5.2, 4.5), (5.0, 6.4),
+                                 (1.5, 4.0)]))
+        flame = sd_circle(0, 6.2, 1.1)
+        ribs = sd_union(sd_box(0, -0.8, 2.7, 0.45), sd_box(0, 1.8, 2.7, 0.45))
+        return [
+            Part(fins, "dark", h=0.5, bevel=1.0),
+            Part(flame, "fire", glow=True, bevel=1.6),
+            Part(body, "red", z=0.4, h=1.6, bevel=2.6, dome=True, spec=0.5),
+            Part(ribs, "wine_dark", z=1.4, h=0.2, bevel=0.5),
+            Part(cap, "amber", z=1.7, h=0.8, bevel=1.4, dome=True,
+                 spec=0.8),
+        ]
+    return sheet(rotations(b, 16, 16, 16), 4)
+
+
+def missile3():
+    # Enemy 4: seeker with a forked bow, teal
+    def b():
+        body = sd_capsule(0, -4.0, 0, 3.5, 2.0)
+        fork = mirror_x(sd_capsule(1.6, -6.2, 1.2, -2.0, 1.0))
+        fins = mirror_x(sd_poly([(1.2, 0.5), (5.0, 4.0), (5.0, 5.6),
+                                 (1.2, 4.2)]))
+        flame = sd_circle(0, 5.6, 1.1)
+        eye = sd_circle(0, -2.0, 1.0)
+        return [
+            Part(flame, "teal", glow=True, bevel=1.1, bright=0.2),
+            Part(fins, "dark", h=0.5, bevel=1.0),
+            Part(fork, "teal", z=0.3, h=0.8, bevel=0.9, dome=True,
+                 bright=-0.15),
+            Part(body, "teal", z=0.5, h=1.3, bevel=2.0, dome=True, spec=0.5,
+                 bright=-0.15),
+            Part(eye, "fire", glow=True, bevel=1.0, bright=0.2),
+        ]
+    return sheet(rotations(b, 16, 16, 16), 4)
+
+
+# ---------------------------------------------------------------------------
+# Enemy 2: interceptor (24x24, 32 directions). Forward-swept amber wings.
+# ---------------------------------------------------------------------------
+
+def fighter():
+    def b():
+        body = sd_poly([(0, -9.5), (2.8, -3.5), (3.0, 6.0), (0, 8.5),
+                        (-3.0, 6.0), (-2.8, -3.5)])
+        wing = mirror_x(sd_poly([(2.0, 3.5), (9.5, -4.0), (10.5, -2.6),
+                                 (4.2, 6.5), (2.0, 6.5)]))
+        claw = mirror_x(sd_capsule(9.8, -3.6, 9.8, 1.0, 1.0))
+        cockpit = sd_ellipse(0, -2.5, 1.5, 2.6)
+        intake = mirror_x(sd_box(2.6, 2.5, 0.9, 1.6, 0.4))
+        flame = sd_union(mirror_x(sd_circle(1.4, 8.2, 1.0)))
+        return [
+            Part(flame, "fire", glow=True, bevel=1.0),
+            Part(wing, "amber", z=0.2, h=0.7, bevel=1.6, spec=0.3),
+            Part(claw, "dark", z=0.5, h=0.8, bevel=0.9, dome=True),
+            Part(body, "violet", z=0.6, h=1.5, bevel=2.4, dome=True,
+                 spec=0.5),
+            Part(intake, "dark", z=1.0, h=0.3, bevel=0.5),
+            Part(cockpit, "glass", z=1.8, h=0.8, bevel=1.2, dome=True,
+                 spec=0.9),
+        ]
+    return sheet(rotations(b, 32, 24, 24), 8)
+
+
+# ---------------------------------------------------------------------------
+# Enemies 5-7: "Crescent" drones (24x24, 16 directions)
+# ---------------------------------------------------------------------------
+
+def crescent(mat, core_mat):
+    def b():
+        outer = sd_circle(0, 1.0, 9.5)
+        inner = sd_circle(0, -4.5, 8.0)
+        horn = sd_sub(outer, inner)
+        core = sd_circle(0, 2.5, 3.0)
+        coreglow = sd_circle(0, 2.5, 1.8)
+        tips = mirror_x(sd_circle(7.0, -2.0, 1.3))
+        spokes = sd_box(0, 6.5, 0.8, 2.3)
+        return [
+            Part(horn, mat, z=0.2, h=1.4, bevel=2.6, dome=True, spec=0.45),
+            Part(spokes, "dark", z=1.0, h=0.4, bevel=0.6),
+            Part(tips, "dark", z=1.0, h=0.6, bevel=1.0, dome=True),
+            Part(core, "steel", z=1.2, h=1.0, bevel=1.6, dome=True),
+            Part(coreglow, core_mat, glow=True, bevel=1.8, bright=0.1),
+        ]
+    return sheet(rotations(b, 16, 24, 24), 4)
+
+
+# ---------------------------------------------------------------------------
+# M1-M4: mothership (48x48, 32 frame spin cycle)
+# ---------------------------------------------------------------------------
+
+def bigship():
+    frames = []
+    for i in range(32):
+        a = 2 * math.pi * i / 32
+        disc = sd_circle(0, 0, 21.5)
+        rim = sd_ring(0, 0, 18.5, 1.6)
+        pods = []
+        for k in range(6):
+            ang = a + k * math.pi / 3
+            pods.append(sd_circle(16.0 * math.sin(ang), -16.0 * math.cos(ang),
+                                  3.6))
+        pod = sd_union(*pods)
+        lights = []
+        for k in range(6):
+            ang = a + k * math.pi / 3 + math.pi / 6
+            lights.append(sd_circle(19.0 * math.sin(ang),
+                                    -19.0 * math.cos(ang), 1.2))
+        light = sd_union(*lights)
+        panels = []
+        for k in range(3):
+            ang = -a * 0.5 + k * 2 * math.pi / 3
+            panels.append(sd_rot(sd_box(0, -10.0, 2.2, 3.5, 0.8), ang))
+        panel = sd_union(*panels)
+        dome = sd_circle(0, 0, 8.5)
+        core = sd_circle(0, 0, 4.0)
+        parts = [
+            Part(disc, "steel", z=0.0, h=5.0, bevel=14.0, dome=True,
+                 spec=0.3, bright=-0.08),
+            Part(rim, "dark", z=4.0, h=0.5, bevel=1.0),
+            Part(panel, "violet", z=4.6, h=0.5, bevel=1.2),
+            Part(pod, "hull", z=4.4, h=2.0, bevel=3.0, dome=True, spec=0.6,
+                 bright=-0.1),
+            Part(light, "fire", glow=True, bevel=1.2,
+                 bright=0.25 * math.sin(a * 6)),
+            Part(dome, "violet", z=5.0, h=4.0, bevel=7.0, dome=True,
+                 spec=0.7),
+            Part(core, "rose", glow=True, bevel=4.0,
+                 bright=0.15 * math.sin(a * 4)),
+        ]
+        frames.append(render(parts, 48, 48, ang=0.0))
+    return sheet(frames, 8)
+
+
+# ---------------------------------------------------------------------------
+# Asteroids (32x32, 32 frame rotation)
+# ---------------------------------------------------------------------------
+
+def rock():
+    rng = np.random.RandomState(7)
+    lobes = [(rng.uniform(0, 2 * math.pi), rng.uniform(0.6, 1.4),
+              rng.uniform(0.05, 0.14)) for _ in range(6)]
+    craters = [(rng.uniform(-8, 8), rng.uniform(-8, 8), rng.uniform(1.4, 3.2))
+               for _ in range(7)]
+
+    def radius(th):
+        r = 11.5
+        for ph, fr, amp in lobes:
+            r = r * (1 + amp * np.sin(th * round(fr * 3) + ph))
+        return r
+
+    def shape(x, y):
+        th = np.arctan2(y, x)
+        return np.hypot(x, y) - radius(th)
+
+    def bumps(x, y):
+        h = 1.6 * noise.fbm2(x * 0.25, y * 0.25, seed=3, octaves=3)
+        for cx, cy, r in craters:
+            d = np.hypot(x - cx, y - cy) / r
+            h = h - np.where(d < 1, 2.2 * (1 - d * d), 0) \
+                + np.where((d >= 1) & (d < 1.4), 0.9 * (1 - (d - 1) / 0.4), 0)
+        return h
+
+    parts = [Part(shape, "rock", z=0, h=9.0, bevel=11.0, dome=True, spec=0.1,
+                  bright=-0.12,
+                  hfunc=bumps)]
+    frames = [render(parts, 32, 32, ang=-2 * math.pi * i / 32)
+              for i in range(32)]
+    return sheet(frames, 8)
+
+
+def rockexpl():
+    """12 frames, 64x64: shattering rock, dust ring and embers."""
+    rng = np.random.RandomState(11)
+    chunks = [(rng.uniform(0, 2 * math.pi), rng.uniform(0.5, 1.0),
+               rng.uniform(1.2, 2.6), rng.uniform(-3, 3)) for _ in range(14)]
+    frames = []
+    for f in range(12):
+        t = (f + 1) / 12.0
+        img = np.zeros((64, 64, 4), dtype=np.uint8)
+        ys, xs = np.mgrid[0:64, 0:64]
+        dx, dy = xs + 0.5 - 32, ys + 0.5 - 32
+        d = np.hypot(dx, dy)
+        # Dust ring
+        R = 6 + 24 * (1 - (1 - t) ** 2)
+        width = 3 + 5 * t
+        n = noise.fbm2(xs * 0.15 + f * 0.7, ys * 0.15, seed=5, octaves=3)
+        ring = np.clip(1 - np.abs(d - R) / width, 0, 1) * (0.6 + 0.6 * n)
+        ring *= (1 - t) ** 0.8 * 1.3
+        dust = RAMPS["rock"]
+        fire = RAMPS["fire"]
+        core = np.clip(1 - d / (14 * (1 - t) + 1), 0, 1) * (1 - t) ** 1.5 \
+            * (0.7 + 0.5 * n)
+        for yy in range(64):
+            for xx in range(64):
+                c = core[yy, xx]
+                r = ring[yy, xx]
+                if c > 0.12:
+                    k = int(np.clip(c * len(fire) * 1.3, 0, len(fire) - 1))
+                    img[yy, xx, :3] = fire[k]
+                    img[yy, xx, 3] = 255
+                elif r > 0.18:
+                    k = int(np.clip(r * len(dust), 0, len(dust) - 1))
+                    if (xx + yy + f) % 2 == 0 or r > 0.45:
+                        img[yy, xx, :3] = dust[k]
+                        img[yy, xx, 3] = 255
+        im = Image.fromarray(img, "RGBA")
+        # Tumbling chunks
+        for ang, sp, sz, spin in chunks:
+            if t > 0.85 * sp + 0.15:
+                continue
+            dist = 4 + 26 * t * sp
+            cx = 32 + dist * math.cos(ang)
+            cy = 32 + dist * math.sin(ang)
+            s = sz * (1 - 0.5 * t)
+            parts = [Part(sd_poly([(-s, -s * 0.6), (s * 0.7, -s),
+                                   (s, s * 0.5), (-s * 0.4, s)]),
+                          "rock", h=1.0, bevel=s, dome=True)]
+            n = int(s * 2 + 4)
+            ch = render(parts, n, n, ang=spin * t * 3)
+            im.alpha_composite(ch, (int(cx - n / 2), int(cy - n / 2)))
+        frames.append(im)
+    return sheet(frames, 4)
+
+
+# ---------------------------------------------------------------------------
+# Enemy bullets (6x6) and their impacts (16x16, 6 frames)
+# ---------------------------------------------------------------------------
+
+def _bullet_frames(ramp, n, spikes):
+    frames = []
+    for i in range(n):
+        ph = 2 * math.pi * i / n
+        img = np.zeros((6, 6, 4), dtype=np.uint8)
+        ys, xs = np.mgrid[0:6, 0:6]
+        dx, dy = xs + 0.5 - 3, ys + 0.5 - 3
+        d = np.hypot(dx, dy)
+        th = np.arctan2(dy, dx)
+        r = 2.3 + 0.5 * np.cos(th * spikes + ph * (1 if spikes else 0)) \
+            * (1 if spikes else 0) + 0.25 * math.sin(ph)
+        v = np.clip(1 - d / r, 0, 1)
+        for yy in range(6):
+            for xx in range(6):
+                if v[yy, xx] <= 0.05:
+                    continue
+                k = int(np.clip(v[yy, xx] * len(ramp) * 1.25, 0,
+                                len(ramp) - 1))
+                img[yy, xx, :3] = ramp[k]
+                img[yy, xx, 3] = 255
+        frames.append(Image.fromarray(img, "RGBA"))
+    return frames
+
+
+def bullets():
+    blue = RAMPS["dark"][2:] + RAMPS["ice"][2:]
+    green = RAMPS["green"][1:]
+    red = RAMPS["red"][1:] + [rgb(19), rgb(20)]
+    return (sheet(_bullet_frames(blue, 14, 4), 7),
+            sheet(_bullet_frames(green, 7, 0), 7),
+            sheet(_bullet_frames(red, 14, 3), 7))
+
+
+def _burst_frames(ramp, size, n, seed, rays=6, ring=True):
+    rng = np.random.RandomState(seed)
+    sparks = [(rng.uniform(0, 2 * math.pi), rng.uniform(0.6, 1.0))
+              for _ in range(rays)]
+    frames = []
+    c = size / 2.0
+    for f in range(n):
+        t = f / float(max(n - 1, 1))
+        img = np.zeros((size, size, 4), dtype=np.uint8)
+        ys, xs = np.mgrid[0:size, 0:size]
+        dx, dy = xs + 0.5 - c, ys + 0.5 - c
+        d = np.hypot(dx, dy)
+        flash = np.clip(1 - d / (c * (0.55 - 0.45 * t) + 0.5), 0, 1) \
+            * (1 - t) ** 1.2
+        rr = c * (0.3 + 0.65 * t)
+        rv = np.clip(1 - np.abs(d - rr) / 1.0, 0, 1) * (1 - t) if ring \
+            else 0 * d
+        v = np.maximum(flash * 1.4, rv * 0.8)
+        for ang, sp in sparks:
+            sx = c + math.cos(ang) * c * (0.25 + 0.7 * t * sp)
+            sy = c + math.sin(ang) * c * (0.25 + 0.7 * t * sp)
+            ds_ = np.hypot(xs + 0.5 - sx, ys + 0.5 - sy)
+            v = np.maximum(v, np.clip(1 - ds_ / 1.1, 0, 1) * (1 - t * 0.9))
+        for yy in range(size):
+            for xx in range(size):
+                if v[yy, xx] <= 0.12:
+                    continue
+                k = int(np.clip(v[yy, xx] * len(ramp), 0, len(ramp) - 1))
+                img[yy, xx, :3] = ramp[k]
+                img[yy, xx, 3] = 255
+        frames.append(Image.fromarray(img, "RGBA"))
+    return frames
+
+
+def bullet_explosions():
+    blue = RAMPS["dark"][2:] + RAMPS["ice"][2:]
+    green = RAMPS["green"][1:]
+    red = RAMPS["red"][1:] + [rgb(19), rgb(20)]
+    return (sheet(_burst_frames(blue, 16, 6, 1), 6),
+            sheet(_burst_frames(green, 16, 6, 2), 6),
+            sheet(_burst_frames(red, 16, 6, 3), 6))
+
+
+# ---------------------------------------------------------------------------
+# Ring (16x16, 16 frames): spinning plasma ring mine
+# ---------------------------------------------------------------------------
+
+def ring():
+    frames = []
+    ramp = RAMPS["violet"][1:] + [rgb(8)]
+    for i in range(16):
+        ph = 2 * math.pi * i / 16
+        img = np.zeros((16, 16, 4), dtype=np.uint8)
+        ys, xs = np.mgrid[0:16, 0:16]
+        dx, dy = xs + 0.5 - 8, ys + 0.5 - 8
+        d = np.hypot(dx, dy)
+        th = np.arctan2(dy, dx)
+        R = 5.2 + 0.5 * math.sin(ph * 2)
+        band = np.clip(1 - np.abs(d - R) / 2.0, 0, 1)
+        swirl = 0.55 + 0.45 * np.cos(th * 3 - ph * 3)
+        v = band * (0.45 + 0.75 * swirl)
+        core = np.clip(1 - d / 2.0, 0, 1) * (0.4 + 0.3 * math.sin(ph * 4))
+        v = np.maximum(v, core)
+        for yy in range(16):
+            for xx in range(16):
+                if v[yy, xx] <= 0.15:
+                    continue
+                k = int(np.clip(v[yy, xx] * len(ramp), 0, len(ramp) - 1))
+                img[yy, xx, :3] = ramp[k]
+                img[yy, xx, 3] = 255
+        frames.append(Image.fromarray(img, "RGBA"))
+    return sheet(frames, 4)
+
+
+def ringexpl():
+    ramp = RAMPS["violet"][1:] + [rgb(8)]
+    a = _burst_frames(ramp, 20, 8, 21, rays=8)
+    b = _burst_frames(RAMPS["rose"][1:], 20, 8, 22, rays=5)
+    return sheet(a + b, 8)
+
+
+# ---------------------------------------------------------------------------
+# Bombs (12x12). 0-15 bomb 1 idle, 16-31 bomb 2 idle, 32-37 armed flash.
+# ---------------------------------------------------------------------------
+
+def _mine(i, n, mat, light_mat, spikes, armed=False):
+    a = 2 * math.pi * i / n
+    shell = sd_circle(0, 0, 3.6)
+    sp = []
+    for k in range(spikes):
+        ang = a + k * 2 * math.pi / spikes
+        sp.append(sd_capsule(0, 0, 5.0 * math.sin(ang), -5.0 * math.cos(ang),
+                             0.7))
+    spike = sd_union(*sp)
+    eye = sd_circle(0, 0, 1.5)
+    pulse = 0.5 + 0.5 * math.sin(a * (1 if not armed else 3))
+    return render([
+        Part(spike, "dark", z=0, h=0.6, bevel=0.8, dome=True),
+        Part(shell, mat, z=0.4, h=1.4, bevel=2.4, dome=True, spec=0.5),
+        Part(eye, light_mat, glow=True, bevel=1.5,
+             bright=-0.3 + 0.5 * pulse if not armed else 0.3),
+    ], 12, 12)
+
+
+def bombs():
+    frames = [_mine(i, 16, "steel", "green", 4) for i in range(16)]
+    frames += [_mine(i, 16, "gold", "amber", 6) for i in range(16)]
+    for i in range(6):
+        img = _mine(i, 6, "red" if i % 2 == 0 else "fire", "white", 4,
+                    armed=True)
+        frames.append(img)
+    while len(frames) < 48:
+        frames.append(Image.new("RGBA", (12, 12), (0, 0, 0, 0)))
+    return sheet(frames, 16)
+
+
+def bombdeto():
+    ramp = RAMPS["fire"] + [rgb(8)]
+    return sheet(_burst_frames(ramp, 20, 8, 31, rays=10), 8)
+
+
+# ---------------------------------------------------------------------------
+# Player bolts (8x8, 128 frames). See KOBO_myship::bolt_frame().
+#   0-31   muzzle flash per direction (8 dirs x 4)
+#   32-63  bolt in flight per axis (4 axes x 8: anim 0-3, 4 = fade)
+#   80-111 bolt impact sparks
+# ---------------------------------------------------------------------------
+
+def _bolt_img(ang, length, width, ramp, bright=1.0):
+    img = np.zeros((8, 8, 4), dtype=np.uint8)
+    ys, xs = np.mgrid[0:8, 0:8]
+    dx, dy = xs + 0.5 - 4, ys + 0.5 - 4
+    c, s = math.cos(ang), math.sin(ang)
+    along = dx * s - dy * c
+    across = dx * c + dy * s
+    v = np.clip(1 - np.abs(across) / width, 0, 1) \
+        * np.clip(1 - np.abs(along) / length, 0, 1) ** 0.5 * bright
+    for yy in range(8):
+        for xx in range(8):
+            if v[yy, xx] <= 0.1:
+                continue
+            k = int(np.clip(v[yy, xx] * len(ramp) * 1.2, 0, len(ramp) - 1))
+            img[yy, xx, :3] = ramp[k]
+            img[yy, xx, 3] = 255
+    return Image.fromarray(img, "RGBA")
+
+
+def bolts():
+    ramp = [rgb(16), rgb(17), rgb(18), rgb(19), rgb(20), rgb(8)]
+    frames = [Image.new("RGBA", (8, 8), (0, 0, 0, 0)) for _ in range(128)]
+    for d in range(8):
+        ang = d * math.pi / 4
+        for k in range(4):
+            # Muzzle: a short hot blob growing into a bolt
+            frames[d * 4 + k] = _bolt_img(ang, 1.2 + k * 0.8,
+                                          1.9 - k * 0.2, ramp)
+    for ax in range(4):
+        ang = ax * math.pi / 4
+        for k in range(4):
+            frames[32 + ax * 8 + k] = _bolt_img(ang, 3.6 + (k % 2) * 0.4,
+                                                1.4 + 0.2 * (k == 1),
+                                                ramp, 1.0 - 0.06 * k)
+        frames[32 + ax * 8 + 4] = _bolt_img(ang, 3.0, 1.1, ramp[:4], 0.8)
+        for k in range(5, 8):
+            frames[32 + ax * 8 + k] = _bolt_img(ang, 3.4, 1.3, ramp, 0.9)
+    sparks = _burst_frames(ramp, 8, 32, 41, rays=4, ring=False)
+    for i in range(32):
+        # Smooth decay so any 8 frame window starting at 80 + 4k reads
+        # as a flash fading out.
+        frames[80 + i] = sparks[min(31, i * 2 // 2)]
+    return sheet(frames, 16)
+
+
+# ---------------------------------------------------------------------------
+# Shield (32x32, 8 frames): hexagonal energy lattice
+# ---------------------------------------------------------------------------
+
+def shield():
+    """Energy bubble: bright rim, sweeping highlight arc and a rotating
+    hexagonal node lattice on the bubble surface."""
+    frames = []
+    ramp = [rgb(10), rgb(11), rgb(12), rgb(13), rgb(8)]
+    # Hex lattice nodes on the bubble (precomputed in bubble space)
+    nodes = []
+    for j in range(-4, 5):
+        for i in range(-4, 5):
+            u = (i + 0.5 * (j & 1)) * 0.42
+            v = j * 0.36
+            if u * u + v * v < 0.95:
+                nodes.append((u, v))
+    for f in range(8):
+        ph = 2 * math.pi * f / 8
+        img = np.zeros((32, 32, 4), dtype=np.uint8)
+        ys, xs = np.mgrid[0:32, 0:32]
+        dx, dy = xs + 0.5 - 16, ys + 0.5 - 16
+        d = np.hypot(dx, dy)
+        th = np.arctan2(dy, dx)
+        rim = np.clip(1 - np.abs(d - 13.8) / 1.3, 0, 1)
+        sweep = np.clip(np.cos(th - ph), 0, 1) ** 3
+        val = rim * (0.5 + 0.5 * sweep)
+        # Lattice nodes, slowly rotating on the sphere
+        for (u, v) in nodes:
+            uu = u + (f / 8.0) * 0.42
+            uu = (uu + 1.05) % 2.1 - 1.05
+            if uu * uu + v * v >= 0.9:
+                continue
+            z = math.sqrt(max(0.0, 1 - uu * uu - v * v))
+            px, py = 16 + uu * 13.0, 16 + v * 13.0
+            nd = np.hypot(xs + 0.5 - px, ys + 0.5 - py)
+            val = np.maximum(val, np.clip(1 - nd / 0.9, 0, 1)
+                             * (0.35 + 0.4 * z))
+        for yy in range(32):
+            for xx in range(32):
+                if val[yy, xx] <= 0.25:
+                    continue
+                k = int(np.clip(val[yy, xx] * len(ramp), 0, len(ramp) - 1))
+                img[yy, xx, :3] = ramp[k]
+                img[yy, xx, 3] = 255
+        frames.append(Image.fromarray(img, "RGBA"))
+    return sheet(frames, 8)
+
+
+def crosshair():
+    img = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+    px = img.load()
+    c1, c2 = rgb(12) + (255,), rgb(1) + (255,)
+    for i in range(16):
+        for j in range(16):
+            dx, dy = i - 7.5, j - 7.5
+            r = math.hypot(dx, dy)
+            gap = abs(dx) < 1 or abs(dy) < 1
+            if 5.0 <= r <= 6.2 and not gap:
+                px[i, j] = c1
+            elif (abs(dx) < 0.6 and 1.5 < abs(dy) < 4.5) or \
+                    (abs(dy) < 0.6 and 1.5 < abs(dx) < 4.5):
+                px[i, j] = c1
+    # Shadow outline
+    a = np.array(img)
+    m = a[:, :, 3] > 0
+    o = np.zeros_like(m)
+    o[1:, :] |= m[:-1, :]
+    o[:-1, :] |= m[1:, :]
+    o[:, 1:] |= m[:, :-1]
+    o[:, :-1] |= m[:, 1:]
+    o &= ~m
+    a[o] = c2
+    return Image.fromarray(a, "RGBA")
