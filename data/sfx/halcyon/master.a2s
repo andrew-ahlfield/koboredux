@@ -1,0 +1,81 @@
+def title	"HalcyonMaster"
+def version	"1.0.0"
+def description	"Kobo Redux Halcyon Sound Theme: Mixer Groups"
+def author	"Andrew Ahlfield"
+def copyright	"Copyright 2026 Andrew Ahlfield"
+def license	"CC BY-SA 4.0"
+def a2sversion	"1.9.1"
+
+// Mixer groups. Every group takes 2(V Dur) to set its volume, ramped over
+// Dur ms. The master group also takes 3(WSA Dur), the "volume boost"
+// setting, which drives a soft saturation stage before the limiter.
+
+def FADETIME	250
+
+HMaster()
+{
+	struct {
+		inline 0 2
+		dcblock DCB 2 2
+		waveshaper WS 2 2
+		panmix PM 2 2
+		limiter L 2 >
+	}
+	DCB.cutoff 12f
+	WS.amount .3
+	PM.vol .5
+	L.threshold .95
+	set
+	2(V Dur=FADETIME)
+	{
+		PM.vol V
+		ramp PM.vol Dur
+	}
+	3(WSA Dur=FADETIME)
+	{
+		WS.amount (WSA * .25)
+		ramp WS.amount Dur
+	}
+}
+
+// Ingame effects get a short, dark stereo echo: a hint of space around
+// the action without smearing it.
+HSfxGroup()
+{
+	struct {
+		inline 0 2
+		fbdelay D 2 2
+		panmix PM 2 >
+	}
+	D.fbdelay 170; D.fbgain .2
+	D.ldelay 93; D.lgain .14
+	D.rdelay 131; D.rgain .14
+	PM.vol .5
+	set
+	2(V Dur=FADETIME)
+	{
+		PM.vol V
+		ramp PM.vol Dur
+	}
+}
+
+HStereoGroup()
+{
+	struct {
+		inline 0 2
+		panmix PM 2 >
+	}
+	PM.vol .5
+	set
+	2(V Dur=FADETIME)
+	{
+		PM.vol V
+		ramp PM.vol Dur
+	}
+}
+
+export def S_G_MASTER	HMaster
+export def S_G_UI	HStereoGroup
+export def S_G_SFX	HSfxGroup
+export def S_G_MUSIC	HStereoGroup
+export def S_G_TITLE	HStereoGroup

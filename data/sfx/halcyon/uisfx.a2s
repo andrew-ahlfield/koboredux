@@ -1,0 +1,176 @@
+def title	"HalcyonUISFX"
+def version	"1.0.0"
+def description	"Kobo Redux Halcyon Sound Theme: User Interface"
+def author	"Andrew Ahlfield"
+def copyright	"Copyright 2026 Andrew Ahlfield"
+def license	"CC BY-SA 4.0"
+def a2sversion	"1.9.1"
+
+// User interface sounds. The game plays these with (P V X): pitch offset,
+// volume and pan, all of which have sensible defaults. They share one
+// voice: soft FM bells tuned to A, so menus feel calm and nothing clashes
+// with the title song.
+
+def A4	9n
+
+// A short bell. Ratio is the modulator pitch in octaves above the carrier.
+UIBell(P V=1 X=0 T=200 Ratio=1.807 Idx=1)
+{
+	struct { fm2; panmix }
+	pan X; set
+	@p P; @p1 Ratio; @a1 Idx; @a (V * .5)
+	a1 (Idx * .1); a (V * .17); d (T * .3)
+	a 0; d T
+}
+
+// A plain sine blip
+UIBlip(P V=1 X=0 T=30)
+{
+	struct { wtosc; panmix }
+	pan X; set
+	w sine; @p P; @a (V * .25)
+	a 0; d T
+}
+
+// Menu opens: two rising bells
+export S_UI_OPEN(P=0 V=1 X=0)
+{
+	UIBell (A4 + P) V X 150
+	d 60
+	UIBell (A4 + 7n + P) V X 250
+}
+
+// Selection confirmed: a bright bell with a fifth on top
+export S_UI_OK(P=0 V=1 X=0)
+{
+	UIBell (A4 + 12n + P) V X 220
+	d 40
+	UIBell (A4 + 19n + P) (V * .7) X 300
+}
+
+// Cursor moved: a tiny glassy tick
+export S_UI_MOVE(P=0 V=1 X=0)
+{
+	UIBell (A4 + 24n + P) (V * .35) X 60 2 .6
+}
+
+// Value changed: an even smaller tick
+export S_UI_TICK(P=0 V=1 X=0)
+{
+	UIBlip (A4 + 24n + P) (V * .5) X 25
+}
+
+// Countdown: P rises a semitone per second as the timer runs out
+export S_UI_CDTICK(P=0 V=1 X=0)
+{
+	UIBell (A4 + 12n + P) V X 300 1 1.5
+}
+
+// Menu closed or choice backed out of: two falling bells
+export S_UI_CANCEL(P=0 V=1 X=0)
+{
+	UIBell (A4 + 7n + P) V X 120
+	d 60
+	UIBell (A4 + P) V X 200
+}
+
+// Not allowed: a low double buzz
+export S_UI_ERROR(P=0 V=1 X=0)
+{
+	struct { wtosc; filter12; panmix }
+	pan X; set
+	w saw; @p (A4 - 24n + P); @cutoff (A4 - 12n + P + 2); q .1
+	2 {
+		@a (V * .2); d 70
+		a 0; d 50
+	}
+}
+
+// Get ready: a rising arpeggio that settles on a held fifth
+export S_UI_READY(P=0 V=1 X=0)
+{
+	tempo 150 4
+	!n (A4 - 12n + P)
+	UIBell n V X 200;		td 1
+	UIBell (n + 4n) V X 200;	td 1
+	UIBell (n + 7n) V X 200;	td 1
+	UIBell (n + 12n) V X 200;	td 1
+	UIBell (n + 16n) V X 300;	td 1
+	UIBell (n + 19n) V X 800
+	UIBell (n + 12n) (V * .6) X 800
+}
+
+// Game on: a quick upward flourish
+export S_UI_PLAY(P=0 V=1 X=0)
+{
+	!n (A4 + P)
+	UIBell n V X 150;		d 50
+	UIBell (n + 7n) V X 150;	d 50
+	UIBell (n + 12n) V X 400
+}
+
+// Paused: the same flourish, falling
+export S_UI_PAUSE(P=0 V=1 X=0)
+{
+	!n (A4 + 12n + P)
+	UIBell n V X 150;		d 50
+	UIBell (n - 5n) V X 150;	d 50
+	UIBell (n - 12n) V X 400
+}
+
+GameOverDrone(P V=1 L=3000)
+{
+	struct { wtosc o1; panmix m1 1 >; wtosc o2; panmix m2 1 > }
+	o1.w triangle; o2.w triangle
+	@o1.p P; @o2.p (P + 7n + .003)
+	o1.a (V * .25); o2.a (V * .12); d 400
+	d (L - 1400)
+	o1.a 0; o2.a 0; d 1000
+}
+
+// Game over: a slow descending line over a low drone, ending unresolved
+export S_UI_GAMEOVER(P=0 V=1 X=0)
+{
+	struct { inline 0 1; panmix 1 > }
+	pan X; set
+	tempo 72 2
+	!n (A4 + P)
+	*:GameOverDrone (n - 24n) V 4200
+	UIBell (n + 12n) V 0 700;	td 1
+	UIBell (n + 10n) V 0 700;	td 1
+	UIBell (n + 7n) V 0 700;	td 1
+	UIBell (n + 3n) V 0 700;	td 1
+	UIBell (n + 5n) V 0 900;	td 1
+	UIBell (n + 2n) V 0 1500
+	UIBell n (V * .6) 0 1500
+	td 4
+}
+
+// Loading screen: soft random data chatter until told to stop
+export S_UI_LOADER(P=0 V=1 X=0)
+{
+	struct { wtosc; panmix }
+	pan X; set
+	w sine; a 0
+	!running 1
+	while running {
+		@p (A4 + 24n + P + (rand 12 quant 1 * 1n)); @a (V * .1)
+		a 0; d (rand 40 + 30)
+	}
+	a 0; d 10
+	1() { running 0 }
+}
+
+// Screen transition static: gated hiss until told to stop
+export S_UI_NOISE(P=0 V=1 X=0)
+{
+	struct { wtosc; filter12; panmix }
+	pan X; set
+	w noise; @p 7; @cutoff 5.5; q .05; lp 0; bp .5; hp .5
+	!running 1
+	while running {
+		@a (rand .06 * V); a 0; d (rand 15 + 10)
+	}
+	a 0; d 10
+	1() { running 0 }
+}

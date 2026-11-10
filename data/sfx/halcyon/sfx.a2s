@@ -1,0 +1,762 @@
+def title	"HalcyonSFX"
+def version	"1.0.0"
+def description	"Kobo Redux Halcyon Sound Theme: Game Sound Effects"
+def author	"Andrew Ahlfield"
+def copyright	"Copyright 2026 Andrew Ahlfield"
+def license	"CC BY-SA 4.0"
+def a2sversion	"1.9.1"
+
+// Halcyon game sound effects.
+//
+// The palette is "glass and plasma": soft FM tones for anything the player
+// should read as a signal (shots, launches, warnings), resonant filtered
+// noise for anything physical (rock, metal, explosions), and a sine sub
+// layer under every explosion so big things feel big without being harsh.
+//
+// Slot interface (see data/sfx/chip/sfx.a2s for the full description):
+//   One-shot slots take (pP pV pX): pitch offset, volume and pan.
+//   Continuous slots take the same arguments and handle
+//     1()                   stop, normally meaning death
+//     2(Dmg)                damage taken
+//     3(npP npV npX Dur)    positional update, ramped over Dur ms
+//   S_PLAYER_GUN handles 2() fire, 3(Ch) charge blip, 4(Ch) charged shot.
+//
+// Pitch 0 is middle C (261.6 Hz). One unit is one octave; "n" means
+// semitones and "f" means Hz.
+
+
+  ///////////////////////////////////////////////////////////////////////////
+ // Building blocks
+///////////////////////////////////////////////////////////////////////////
+
+// Explosion core: resonant lowpassed noise that closes down over time, plus
+// a falling sine thump underneath. Size stretches everything; Bright sets
+// the starting filter cutoff (and with it, how "hot" the blast sounds).
+BoomNoise(pP pV=1 pX Size=1 Bright=4)
+{
+	struct { wtosc; filter12; panmix }
+	pan pX; vol pV; set
+	w noise
+	@p (Bright + pP + 2.5); @cutoff (Bright + pP); q .08
+	@a .2
+	cutoff (cutoff - .5); d (25 * Size)
+	*a .8; d (40 * Size)
+
+	// Rumbling tail with a bit of random crackle
+	!k (Size * .012 + .93)
+	!fall (.12 / Size)
+	!drop (.06 / Size)
+	while a > .01 {
+		cutoff (cutoff - fall + rand .1)
+		-p drop
+		*a k
+		d 20
+	}
+	a 0; d 20
+}
+
+BoomThump(pP pV=1 pX Size=1)
+{
+	struct { wtosc; panmix }
+	pan pX; vol pV; set
+	w sine
+	@p (pP - 1.2 + rand .2); @a .7
+	p (pP - 3.2); d (25 * Size)
+	*a .6; d (40 * Size)
+	a 0; d (80 * Size)
+}
+
+Boom(pP pV=1 pX Size=1 Bright=4)
+{
+	BoomNoise pP pV pX Size Bright
+	BoomThump pP pV pX Size
+}
+
+// Pitch sweep on a single oscillator. Used for launches and small bleeps.
+Sweep(pP pV=1 pX W P0=0 P1=-1 T=100)
+{
+	struct { wtosc; panmix }
+	pan pX; vol pV; set
+	w W; phase 0
+	@p (P0 + pP); @a .35
+	p (P1 + pP); a .1; d T
+	a 0; d (T * .5)
+}
+
+// Two operator FM blip: a soft "pew" whose brightness falls with the
+// envelope. P0 to P1 is the pitch sweep, Idx the initial FM index.
+Pew(pP pV=1 pX P0=1 P1=0 Idx=1 Ratio=1 T=120)
+{
+	struct { fm2; panmix }
+	pan pX; vol pV; set
+	@p (P0 + pP); @p1 Ratio; @a1 Idx; @a .45
+	p (P1 + pP); a1 (Idx * .1); d T
+	a 0; d 30
+}
+
+// Metallic ping: inharmonic FM with a short ring. Used for hits on hard
+// things and the no-damage deflect.
+Ping(pP pV=1 pX P=2 A=.4 T=150)
+{
+	struct { fm2; panmix }
+	pan pX; vol pV; set
+	@p (P + pP + rand .05); @p1 1.41; @a1 1.5; @fb1 .2; @a A
+	a1 .2; *a .5; d (T * .25)
+	a 0; d T
+}
+
+// Short filtered noise tick
+Tick(pP pV=1 pX C=6 A=.4 T=40)
+{
+	struct { wtosc; filter12; panmix }
+	pan pX; vol pV; set
+	w noise; @p (C + 1 + pP); @cutoff (C + pP); q .2; lp 0; bp 1
+	@a A
+	a 0; d T
+}
+
+
+  ///////////////////////////////////////////////////////////////////////////
+ // Common damage and death sounds
+///////////////////////////////////////////////////////////////////////////
+
+// Hit on a ship hull: FM clank plus a puff of noise
+HullHit(pP pV=1 pX)
+{
+	struct {
+		fm2 o; panmix po 1 >
+		wtosc n; filter12 f; panmix pn 1 >
+	}
+	po.pan pX; pn.pan pX; po.vol pV; pn.vol pV; set
+	!r (rand .4)
+	@o.p (pP + 1 + r); @o.p1 2.7; @o.a1 2; @o.a .35
+	n.w noise; @n.p (pP + 7); @f.cutoff (pP + 4.5 + r); f.q .1
+	@n.a .12
+	o.p (pP - .5 + r); o.a1 .1; o.a 0; d 70
+	n.a 0; f.cutoff (pP + 3); d 120
+}
+
+// Small ship death: a pop, then a short bright Boom
+ShipDeath(pP pV=1 pX)
+{
+	Pew pP (pV * .8) pX 2 -1.5 3 1.5 60
+	Boom pP pV pX .7 (4.5 + rand .5)
+}
+
+// Destroyed base node (cannon)
+NodeDeath(pP pV=1 pX)
+{
+	Ping pP (pV * .6) pX 1.5 .4 200
+	Boom (pP - .3) pV pX 1 4
+}
+
+
+  ///////////////////////////////////////////////////////////////////////////
+ // Enemy bullets
+///////////////////////////////////////////////////////////////////////////
+
+// Blue: light, high and short
+export S_BULLET1_LAUNCH(pP pV=1 pX)
+{
+	Pew pP (pV * .7) pX 2.2 1.4 1.5 2 70
+}
+
+// Green: a hollow mid "boop"
+export S_BULLET2_LAUNCH(pP pV=1 pX)
+{
+	Pew pP (pV * .8) pX 1.5 .6 1.2 1 90
+}
+
+// Red: heavier, with a breathy noise tail
+export S_BULLET3_LAUNCH(pP pV=1 pX)
+{
+	Pew pP (pV * .8) pX 1 -.2 2.5 1.5 120
+	Tick pP (pV * .5) pX 5 .3 120
+}
+
+// Bullet impacts: tiny sizzles, pitched per colour
+export S_BLTX_BLUE_LAUNCH(pP pV=1 pX)
+{
+	Tick (pP + .8) (pV * .5) pX 6 .3 50
+}
+
+export S_BLTX_GREEN_LAUNCH(pP pV=1 pX)
+{
+	Tick (pP + .3) (pV * .5) pX 6 .3 60
+}
+
+export S_BLTX_RED_LAUNCH(pP pV=1 pX)
+{
+	Tick pP (pV * .5) pX 5.5 .35 80
+}
+
+// Player bolt impact on something solid
+export S_BOLTEXPL_LAUNCH(pP pV=1 pX)
+{
+	Tick (pP + 1) (pV * .35) pX 5.5 .3 30
+}
+
+
+  ///////////////////////////////////////////////////////////////////////////
+ // Rocks
+///////////////////////////////////////////////////////////////////////////
+
+// Rock tumbling in: a low filtered whoosh that swells and passes
+export S_ROCK_LAUNCH(pP pV=1 pX)
+{
+	struct { wtosc; filter12; panmix }
+	pan pX; vol pV; set
+	w noise; @p (pP + 4); @cutoff (pP + 1); q .1; lp 1
+	@a 0
+	a .15; cutoff (pP + 2.5); d 180
+	a 0; cutoff (pP + .5); d 400
+}
+
+// Rock chip: stony knock, a short low triangle with gritty noise
+export S_ROCK_DAMAGE(pP pV=1 pX)
+{
+	struct {
+		wtosc o; panmix po 1 >
+		wtosc n; filter12 f; panmix pn 1 >
+	}
+	po.pan pX; pn.pan pX; po.vol pV; pn.vol pV; set
+	!r (rand .3)
+	o.w triangle; @o.p (pP - .5 + r); @o.a .35
+	n.w noise; @n.p (pP + 5); @f.cutoff (pP + 3.5 + r); f.q .15; f.lp 0
+	f.bp 1; @n.a .1
+	o.p (pP - 1.5 + r); o.a 0; d 60
+	n.a 0; d 40
+}
+
+// Rock destroyed: a crunch followed by a long gravelly rumble
+export S_ROCK_DEATH(pP pV=1 pX)
+{
+	Tick pP (pV * .6) pX 4.5 .5 90
+	Boom (pP - .4) pV pX 1.5 3.2
+}
+
+
+  ///////////////////////////////////////////////////////////////////////////
+ // Ring
+///////////////////////////////////////////////////////////////////////////
+
+// Ring launch: a rising glassy shimmer
+export S_RING_LAUNCH(pP pV=1 pX)
+{
+	struct { fm2; panmix }
+	pan pX; vol pV; set
+	@p (pP + .5); p1 3; @a1 .5; @a 0
+	a .3; p (pP + 1.5); a1 1.5; d 150
+	a 0; p (pP + 2); a1 .3; d 250
+}
+
+// Ring shot down: a falling cluster of glass bells
+export S_RING_DEATH(pP pV=1 pX)
+{
+	!p0 (pP + 2.5)
+	6 {
+		Ping p0 (pV * .5) pX 0 .35 300
+		-p0 (.2 + rand .25)
+		d 25
+	}
+	Boom (pP + .5) (pV * .5) pX .5 5
+}
+
+
+  ///////////////////////////////////////////////////////////////////////////
+ // Bombs
+///////////////////////////////////////////////////////////////////////////
+
+// Rings and bombs ring like glass and thin metal when hit
+export S_RING_DAMAGE(pP pV=1 pX)
+{
+	Ping (pP + .8) (pV * .6) pX 1.5 .3 120
+}
+
+export S_BOMB1_DAMAGE(pP pV=1 pX)
+{
+	Ping pP (pV * .6) pX 1.2 .35 100
+}
+
+export def S_BOMB2_DAMAGE	S_BOMB1_DAMAGE
+
+// Bomb launch: hollow thunk, then a slow descending drift
+BombLaunch(pP pV=1 pX)
+{
+	struct { fm2; panmix }
+	pan pX; vol pV; set
+	@p (pP - .5); @p1 .5; @a1 2; @a .5
+	p (pP - 1.5); a1 .2; a .15; d 80
+	p (pP - 1.2); d 200
+	a 0; p (pP - 2); d 300
+}
+
+export def S_BOMB1_LAUNCH	BombLaunch
+
+export S_BOMB2_LAUNCH(pP pV=1 pX)
+{
+	BombLaunch (pP - .25) pV pX
+}
+
+// Armed warning: alternating sine beeps that speed up over time
+BombTrig(pP pV=1 pX P1=3 P2=3.5)
+{
+	struct { wtosc; panmix }
+	pan pX; vol pV; set
+	w sine
+	!period 120
+	!playing 1
+	while playing {
+		@p (P1 + pP); @a .18; a .05; d (period * .5)
+		@p (P2 + pP); @a .18; a .05; d (period * .5)
+		if (period > 60) { *period .93 }
+	}
+	a 0; d 10
+	1() { playing 0 }
+	2(Dmg) { }
+	3(npP npV npX Dur) { vol npV; pan npX; ramp Dur }
+}
+
+export S_BOMB1_TRIG(pP pV=1 pX)
+{
+	struct { inline 0 1; panmix 1 > }
+	pan pX; vol pV; set
+	1:BombTrig pP 1 0 3 3.5
+	end
+	1() { 1<1 }
+	2(Dmg) { 1<2 Dmg }
+	3(npP npV npX Dur) { vol npV; pan npX; ramp Dur }
+}
+
+export S_BOMB2_TRIG(pP pV=1 pX)
+{
+	struct { inline 0 1; panmix 1 > }
+	pan pX; vol pV; set
+	1:BombTrig pP 1 0 2.75 3.58
+	end
+	1() { 1<1 }
+	2(Dmg) { 1<2 Dmg }
+	3(npP npV npX Dur) { vol npV; pan npX; ramp Dur }
+}
+
+// Detonation: a deep blast with a long low tail
+export S_BOMB1_DETONATE(pP pV=1 pX)
+{
+	Boom (pP - .8) pV pX 1.6 3.5
+}
+
+export S_BOMB2_DETONATE(pP pV=1 pX)
+{
+	Boom (pP - 1) pV pX 2 3.8
+}
+
+// Shot down before going off: a smaller, brighter pop
+export S_BOMB1_DEATH(pP pV=1 pX)
+{
+	Boom pP (pV * .8) pX .7 4.5
+}
+
+export def S_BOMB2_DEATH	S_BOMB1_DEATH
+
+
+  ///////////////////////////////////////////////////////////////////////////
+ // Base cannons, pipes and cores
+///////////////////////////////////////////////////////////////////////////
+
+export S_CANNON_DAMAGE(pP pV=1 pX)
+{
+	Ping pP (pV * .8) pX 1.8 .4 120
+}
+
+export def S_CANNON_DEATH	NodeDeath
+
+// Bullets bouncing off pipes and armour
+export S_NO_DAMAGE(pP pV=1 pX)
+{
+	Ping pP (pV * .5) pX 2.6 .3 60
+}
+
+// Base core: a slow, breathing FM drone that wavers more as it takes
+// damage, revs up when destroyed, and goes out with the biggest bang in
+// the game.
+export S_CORE(pP pV=1 pX)
+{
+	struct { fm2; panmix }
+	pan pX; vol pV; set
+
+	!base (pP - 2 + rand .1)
+	!wob 0
+	!running 1
+	@p base; @p1 2; @a1 .4; @a 0
+	a .12; d 300
+	while running {
+		p (base + wob); a1 (.4 + wob); d 200
+		p (base - wob); a1 .3; d 200
+		*wob .85
+	}
+
+	// Rev up and blow
+	@a .2
+	30 {
+		+base .08; p base; a1 (a1 + .05); d 20
+	}
+	a 0; d 10
+	Boom (pP - .6) 1 0 2.2 3.6
+
+	1() { running 0 }
+	2(Dmg) {
+		+wob (Dmg * .3)
+		if (wob > .5) { wob .5 }
+	}
+	3(npP npV npX Dur) { vol npV; pan npX; ramp Dur }
+}
+
+// Core hit: a low, ringing gong
+export S_CORE_DAMAGE(pP pV=1 pX)
+{
+	Ping (pP - 1.2) (pV * .9) pX 0 .5 350
+}
+
+// Core destroyed: a falling power-down whine on top of the blast that
+// S_CORE itself plays
+export S_CORE_DEATH(pP pV=1 pX)
+{
+	struct { fm2; panmix }
+	pan pX; vol pV; set
+	@p (pP + 1); @p1 1; @a1 2; @a .25
+	p (pP - 1.5); a1 .3; d 700
+	a 0; d 200
+}
+
+// Pipe chain explosion: a crackling fuse. Message 2 kicks it with the
+// intensity of each burning segment.
+PipeFuse(pP pV=1 pX C=5)
+{
+	struct { wtosc; filter12; panmix }
+	pan pX; vol pV; set
+	w noise; @p (C + 2 + pP); @cutoff (C + pP); q .2; lp 0; bp 1
+	a .1
+	!heat 0
+	!running 1
+	while running {
+		@cutoff (C + pP + rand 1 + heat)
+		*a .9; d 8
+		*heat .8
+	}
+	while a > .005 {
+		@cutoff (C + pP + rand 1)
+		*a .8; d 8
+	}
+	a 0; d 10
+	1() { running 0 }
+	2(Int) {
+		@a (Int * .07 + .03)
+		heat (Int * .5)
+	}
+	3(npP npV npX Dur) { vol npV; pan npX; ramp Dur }
+}
+
+export S_PIPEIN(pP pV=1 pX)
+{
+	struct { inline 0 1; panmix 1 > }
+	pan pX; vol pV; set
+	1:PipeFuse pP 1 0 4.5
+	end
+	1() { 1<1 }
+	2(Dmg) { 1<2 Dmg }
+	3(npP npV npX Dur) { vol npV; pan npX; ramp Dur }
+}
+
+export S_PIPEOUT(pP pV=1 pX)
+{
+	struct { inline 0 1; panmix 1 > }
+	pan pX; vol pV; set
+	1:PipeFuse pP 1 0 5.5
+	end
+	1() { 1<1 }
+	2(Dmg) { 1<2 Dmg }
+	3(npP npV npX Dur) { vol npV; pan npX; ramp Dur }
+}
+
+
+  ///////////////////////////////////////////////////////////////////////////
+ // Enemies 1 to 7
+///////////////////////////////////////////////////////////////////////////
+
+// Each kind gets its own launch chirp so they are recognizable by ear.
+
+export S_ENEMY1_LAUNCH(pP pV=1 pX)
+{
+	Sweep pP (pV * .8) pX triangle 1 2 120
+}
+
+export S_ENEMY2_LAUNCH(pP pV=1 pX)
+{
+	Pew pP (pV * .8) pX .5 1.5 2 .5 160
+}
+
+export S_ENEMY3_LAUNCH(pP pV=1 pX)
+{
+	Sweep pP (pV * .7) pX pulse25 0 1 140
+}
+
+export S_ENEMY4_LAUNCH(pP pV=1 pX)
+{
+	Pew pP (pV * .8) pX 2 1 1 3 120
+}
+
+export S_ENEMY5_LAUNCH(pP pV=1 pX)
+{
+	Sweep pP (pV * .8) pX sine 2 .5 160
+}
+
+export S_ENEMY6_LAUNCH(pP pV=1 pX)
+{
+	Pew pP (pV * .8) pX -.5 .8 2.5 1.5 200
+}
+
+export S_ENEMY7_LAUNCH(pP pV=1 pX)
+{
+	Sweep pP (pV * .6) pX saw .5 1.8 180
+}
+
+export def S_ENEMY1_DAMAGE	HullHit
+export def S_ENEMY2_DAMAGE	HullHit
+export def S_ENEMY3_DAMAGE	HullHit
+export def S_ENEMY4_DAMAGE	HullHit
+export def S_ENEMY5_DAMAGE	HullHit
+export def S_ENEMY6_DAMAGE	HullHit
+export def S_ENEMY7_DAMAGE	HullHit
+
+export def S_ENEMY1_DEATH	ShipDeath
+export def S_ENEMY2_DEATH	ShipDeath
+export def S_ENEMY3_DEATH	ShipDeath
+export def S_ENEMY4_DEATH	ShipDeath
+export def S_ENEMY5_DEATH	ShipDeath
+export def S_ENEMY6_DEATH	ShipDeath
+export def S_ENEMY7_DEATH	ShipDeath
+
+
+  ///////////////////////////////////////////////////////////////////////////
+ // Motherships M1 to M4
+///////////////////////////////////////////////////////////////////////////
+
+// Engine drone: two detuned saws through a lowpass that throbs with the
+// spin. Damage opens the filter for a moment; death is a long collapse.
+MothershipEngine(pP pV=1 pX Note=-2)
+{
+	struct {
+		wtosc o1; wtosc o2; filter12 f 1 1; panmix 1 >
+	}
+	pan pX; vol pV; set
+	o1.w saw; o2.w saw
+	!base (Note + pP + rand .05)
+	@o1.p base; @o2.p (base + .012)
+	@f.cutoff (base + 2); f.q .15
+	o1.a .07; o2.a .07; d 200
+	!open 0
+	!running 1
+	while running {
+		f.cutoff (base + 2.5 + open); d 150
+		f.cutoff (base + 1.6 + open); d 150
+		*open .6
+	}
+
+	// Collapse: pitch and filter slide down, then a heavy blast
+	20 {
+		-base .05; o1.p base; o2.p (base + .02); f.cutoff (base + 3); d 30
+	}
+	o1.a 0; o2.a 0; d 30
+	Boom (pP - .5) 1 0 2 3.8
+
+	1() { running 0 }
+	2(Dmg) {
+		open (Dmg * .5 + .5)
+		if (open > 2) { open 2 }
+	}
+	3(npP npV npX Dur) { vol npV; pan npX; ramp Dur }
+}
+
+export S_ENEMY_M1(pP pV=1 pX)
+{
+	struct { inline 0 1; panmix 1 > }
+	pan pX; vol pV; set
+	1:MothershipEngine pP 1 0 -2
+	end
+	1() { 1<1 }
+	2(Dmg) { 1<2 Dmg }
+	3(npP npV npX Dur) { vol npV; pan npX; ramp Dur }
+}
+
+export S_ENEMY_M2(pP pV=1 pX)
+{
+	struct { inline 0 1; panmix 1 > }
+	pan pX; vol pV; set
+	1:MothershipEngine pP 1 0 -1.75
+	end
+	1() { 1<1 }
+	2(Dmg) { 1<2 Dmg }
+	3(npP npV npX Dur) { vol npV; pan npX; ramp Dur }
+}
+
+export S_ENEMY_M3(pP pV=1 pX)
+{
+	struct { inline 0 1; panmix 1 > }
+	pan pX; vol pV; set
+	1:MothershipEngine pP 1 0 -1.5
+	end
+	1() { 1<1 }
+	2(Dmg) { 1<2 Dmg }
+	3(npP npV npX Dur) { vol npV; pan npX; ramp Dur }
+}
+
+export S_ENEMY_M4(pP pV=1 pX)
+{
+	struct { inline 0 1; panmix 1 > }
+	pan pX; vol pV; set
+	1:MothershipEngine pP 1 0 -2.25
+	end
+	1() { 1<1 }
+	2(Dmg) { 1<2 Dmg }
+	3(npP npV npX Dur) { vol npV; pan npX; ramp Dur }
+}
+
+// Hull hit on a mothership: the same clank as small ships, an octave down
+export S_ENEMY_M1_DAMAGE(pP pV=1 pX)
+{
+	HullHit (pP - 1) pV pX
+}
+
+export def S_ENEMY_M2_DAMAGE	S_ENEMY_M1_DAMAGE
+export def S_ENEMY_M3_DAMAGE	S_ENEMY_M1_DAMAGE
+export def S_ENEMY_M4_DAMAGE	S_ENEMY_M1_DAMAGE
+
+// Bailout: escape pods ejected with a pneumatic chirp
+Bailout(pP pV=1 pX)
+{
+	Tick pP (pV * .5) pX 5 .4 60
+	Sweep pP (pV * .7) pX square -.5 1.5 120
+}
+
+export def S_ENEMY_M1_BAILOUT	Bailout
+export def S_ENEMY_M2_BAILOUT	Bailout
+export def S_ENEMY_M3_BAILOUT	Bailout
+export def S_ENEMY_M4_BAILOUT	Bailout
+
+
+  ///////////////////////////////////////////////////////////////////////////
+ // Player ship
+///////////////////////////////////////////////////////////////////////////
+
+// Hull hit: a sharp FM crack and a falling tone
+export S_PLAYER_DAMAGE(pP pV=1 pX)
+{
+	struct {
+		fm2 o; panmix po 1 >
+		wtosc n; filter12 f; panmix pn 1 >
+	}
+	po.pan pX; pn.pan pX; po.vol pV; pn.vol pV; set
+	@o.p (pP + 1.5); @o.p1 1.5; @o.a1 3; @o.fb1 .3; @o.a .5
+	n.w noise; @n.p (pP + 7); @f.cutoff (pP + 5); f.q .1
+	@n.a .2
+	o.p (pP - 1); o.a1 .5; o.a .2; n.a .1; f.cutoff (pP + 4); d 80
+	o.a 0; n.a 0; d 150
+}
+
+// Player destroyed: a long, descending FM wail over a big blast
+export S_PLAYER_DEATH(pP pV=1 pX)
+{
+	struct { fm2; panmix }
+	pan pX; vol pV; set
+	Boom pP pV pX 2.5 4.5
+	@p (pP + 1); @p1 .5; @a1 1; @fb1 .1; @a .35
+	p (pP - 2); a1 3; d 900
+	a 0; d 400
+}
+
+// Primary shot: one quick, bright FM "tsew"
+Shot(pP pV=1 pX)
+{
+	struct { fm2; panmix }
+	pan pX; vol pV; set
+	@p (pP + 1.8 + rand .03); @p1 2; @a1 1.2; @a .7
+	p (pP + .9); a1 .2; a .1; d 45
+	a 0; d 30
+}
+
+// Charge blip: a soft tone that climbs with the charge level
+ChargeBlip(pP pV=1 pX Ch=1)
+{
+	struct { wtosc; panmix }
+	pan pX; vol pV; set
+	w sine
+	@p (Ch * 2 + pP + .5); @a .25
+	a 0; d 40
+}
+
+// Charged shot: a deep plasma whoosh that grows with the charge
+FireCharged(pP pV=1 pX Ch=1)
+{
+	struct {
+		fm2 o; panmix po 1 >
+		wtosc n; filter12 f; panmix pn 1 >
+	}
+	po.pan pX; pn.pan pX; po.vol pV; pn.vol pV; set
+	@o.p (pP + 1 + Ch); @o.p1 .5; @o.a1 (Ch * 2 + 1); @o.a (Ch * .2 + .3)
+	n.w noise; @n.p (pP + 6); @f.cutoff (pP + 4 + Ch); f.q .1
+	@n.a (Ch * .1 + .1)
+	o.p (pP - .5); o.a1 .3; f.cutoff (pP + 3); d (Ch * 120 + 120)
+	o.a 0; n.a 0; d 200
+}
+
+// The player gun program lives as long as the ship and turns messages into
+// detached one-shot voices, so rapid fire never cuts the previous shot off.
+export S_PLAYER_GUN(pP pV=1 pX)
+{
+	struct { inline 0 1; panmix 1 > }
+	pan pX; vol pV; set
+	!alive 1
+	while alive { d 1000 }
+	d 500
+	1() { alive 0 }
+	2() { Shot pP 1 0 }
+	3(Ch) { ChargeBlip pP 1 0 Ch }
+	4(Ch) { FireCharged pP 1 0 Ch }
+}
+
+export S_PLAYER_FIRE_DENIED(pP pV=1 pX)
+{
+	struct { wtosc; panmix }
+	pan pX; vol pV; set
+	w pulse25
+	2 {
+		@p (pP - .5); @a .12; d 30
+		a 0; d 30
+	}
+}
+
+// Shield: a shimmering chorus that flares when it soaks up a hit
+export S_PLAYER_SHIELD(pP pV=1 pX)
+{
+	struct {
+		fm2 o1; fm2 o2; panmix 1 >
+	}
+	pan pX; vol pV; set
+	@o1.p (pP + 1); @o1.p1 2; @o1.a1 .3
+	@o2.p (pP + 1.007); @o2.p1 3; @o2.a1 .2
+	o1.a .2; o2.a .2; d 150
+	!flare 0
+	!on 1
+	while on {
+		o1.a1 (flare * 3 + .3); o2.a1 (flare * 2 + .2)
+		o1.a (flare * .4 + .16); o2.a (flare * .4 + .16); d 40
+		*flare .85
+	}
+	o1.a 0; o2.a 0; d 150
+	1() { on 0 }
+	2(Dmg) {
+		flare (Dmg * .5 + .3)
+		if (flare > 1) { flare 1 }
+	}
+	3(npP npV npX Dur) { vol npV; pan npX; ramp Dur }
+}
