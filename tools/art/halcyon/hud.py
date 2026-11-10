@@ -167,7 +167,7 @@ def _led(w, h, color, level, horizontal=True):
     """One LED cell: rounded lit segment with highlight, or dark when
     level == 0."""
     img = np.zeros((h, w, 4), dtype=np.uint8)
-    off = np.array(rgb(2), float)
+    off = np.array(rgb(25), float)
     c = np.array(color, float)
     base = off + (c - off) * level
     hi = np.minimum(base + (255 - base) * 0.45 * level, 255)
@@ -199,7 +199,7 @@ def proxy_leds(horizontal):
 def _bar(col, level):
     """12x4 bar graph segment."""
     img = np.zeros((4, 12, 4), dtype=np.uint8)
-    off = np.array(rgb(2), float)
+    off = np.array(rgb(25), float)
     c = np.array(col, float)
     base = off + (c - off) * level
     hi = np.minimum(base + (255 - base) * 0.5 * level, 255)
@@ -342,9 +342,9 @@ def logo():
         r_sdf = mask_sdf(redux, 1.0, 0, 42)
         bar = sd_box(0, 23, 150, 1.6, 1.0)
         parts = [
-            Part(bar, "teal", glow=True, bevel=1.6, bright=dim),
-            Part(k_sdf, "hull", z=0, h=7.0, bevel=7.0, dome=True, spec=0.8,
-                 bright=dim - 0.05),
+            Part(bar, "amber", glow=True, bevel=1.6, bright=dim),
+            Part(k_sdf, "gunship", z=0, h=7.0, bevel=7.0, dome=True,
+                 spec=0.9, bright=dim - 0.16),
             Part(r_sdf, "fire", z=0, h=3.0, bevel=3.0, dome=True, spec=0.5,
                  bright=dim + 0.05),
         ]

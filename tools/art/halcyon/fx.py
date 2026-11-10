@@ -3,7 +3,7 @@
 import numpy as np
 from PIL import Image
 
-from .palette import rgb
+from .palette import rgb, RAMPS
 from .render import sheet
 
 
@@ -61,8 +61,10 @@ def grid_tiles(size, levels, edge, fill, light, dark):
 
 
 def gridtfx_small():
-    return sheet(grid_tiles(16, 16, rgb(4), rgb(2), rgb(11), rgb(1)), 4)
+    st = RAMPS["steel"]
+    return sheet(grid_tiles(16, 16, st[3], st[1], rgb(19), rgb(1)), 4)
 
 
 def gridtfx_fullscreen():
-    return sheet(grid_tiles(40, 32, rgb(4), rgb(2), rgb(5), rgb(1)), 8)
+    st = RAMPS["steel"]
+    return sheet(grid_tiles(40, 32, st[3], st[1], st[5], rgb(1)), 8)

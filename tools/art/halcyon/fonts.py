@@ -93,18 +93,22 @@ def build(cells, height, gap=0):
 
 
 def microfont():
-    # Plain bright text with a one pixel drop shadow; 9 px tall sheet.
-    grad = [rgb(7), rgb(7), rgb(6), rgb(6)]
+    # Warm white to pale amber with a one pixel drop shadow, to sit with
+    # the gunmetal and amber dashboard; 9 px tall sheet.
+    grad = [(255, 248, 226), (255, 238, 196), (244, 216, 160),
+            (228, 192, 128)]
     cells = []
     for ch in CHARS:
-        cells.append(styled(bitmap(ch), grad, shadow=rgb(2), pad=0))
+        cells.append(styled(bitmap(ch), grad, shadow=(26, 20, 22), pad=0))
     return build(cells, 9)
 
 
 def smallfont():
-    # Outlined, gradient filled; 11 px tall sheet.
-    grad = [rgb(8), rgb(7), rgb(7), rgb(6), rgb(6), rgb(5), rgb(5)]
-    cells = [styled(bitmap(ch), grad, outline=rgb(1), pad=1)[:, :-1]
+    # Outlined, white to amber gradient; 11 px tall sheet.
+    grad = [(255, 255, 240), (255, 246, 206), (255, 234, 172),
+            (250, 214, 132), (240, 190, 100), (228, 164, 76),
+            (210, 136, 58)]
+    cells = [styled(bitmap(ch), grad, outline=(30, 16, 16), pad=1)[:, :-1]
              for ch in CHARS]
     return build(cells, 11)
 

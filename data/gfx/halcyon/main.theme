@@ -342,4 +342,4 @@ set D_GRIDTFX_COLORMOD	1 .5	// front/below
 
 // Menu focus fire effect
 set D_FOCUSFX_DITHERMODE NOISE
-palette P_FOCUSFX P_MAIN 1 10 11 12 13 13 8
+palette P_FOCUSFX P_MAIN 1 41 34 36 37 38 39
