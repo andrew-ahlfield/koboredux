@@ -85,6 +85,7 @@ enum gc_sources_t
 	GC_SRC_KEY1,
 	GC_SRC_KEY2,
 	GC_SRC_KEY3,
+	GC_SRC_GAMEPAD,
 	GC_SRC__COUNT
 };
 
@@ -117,6 +118,7 @@ class gamecontrol_t
 	static int js_x, js_y;
 	static bool js_sprint;
 	static void change();
+	static void stick(int x, int y);
 	static gc_targets_t mapsrc(SDL_Keysym sym, int &src);
   public:
 	gamecontrol_t();
@@ -137,6 +139,7 @@ class gamecontrol_t
 	static void mouse_position(int h, int v);
 	static void js_axis(int axis, int value);
 	static void js_hat(int value);
+	static void pad_stick(int x, int y)	{ stick(x, y); }
 	static int dir()			{ return direction; }
 	static bool dir_push();
 	static bool down(gc_targets_t b)	{ return state[b]; }

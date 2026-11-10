@@ -238,6 +238,15 @@ static inline int kobo_wrapdist(int a, int b, int w)
 /* Campaigns */
 #define	KOBO_MAX_CAMPAIGN_SLOTS	10
 
+/* Gamepads (SDL game controllers) */
+#define	KOBO_MAX_GAMEPADS	8
+#define	KOBO_PAD_NAV_PRESS	16384	// Stick deflection that navigates menus
+#define	KOBO_PAD_NAV_RELEASE	10000	// ...and that must drop below to reset
+#define	KOBO_PAD_NAV_DELAY	400	// ms before held navigation repeats
+#define	KOBO_PAD_NAV_REPEAT	120	// ms between repeats
+#define	KOBO_PAD_TRIGGER_PRESS	16384	// Trigger travel (of 32767) that fires
+#define	KOBO_PAD_TRIGGER_RELEASE 8192	// ...and that must drop below to stop
+
 /* Death and end-of-replay sequence timings (logic frames) */
 #define	KOBO_LEVELDONE_TIMEOUT	50
 #define	KOBO_REPLAYEND_TIMEOUT	50

@@ -266,6 +266,7 @@ static void add_dirs(prefs_t *p)
 
 
 SDL_Joystick	*KOBO_main::joystick = NULL;
+SDL_GameController *KOBO_main::gamepads[KOBO_MAX_GAMEPADS];
 
 FILE		*KOBO_main::logfile = NULL;
 FILE		*KOBO_main::userlogfile = NULL;
@@ -1305,6 +1306,110 @@ void KOBO_main::close_js()
 }
 
 
+// Gamepads go through the SDL game controller API, so any pad in SDL's
+// mapping database (or SDL_GAMECONTROLLERCONFIG) gets the same standard
+// layout, without per-device bindings. Pads are opened as they appear, and
+// input is taken from all of them.
+int KOBO_main::init_pads(prefs_t *p)
+{
+	if(!p->gamepad)
+		return 0;
+	if(SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) < 0)
+	{
+		log_printf(ELOG, "Error setting up gamepads: %s\n",
+				SDL_GetError());
+		return -1;
+	}
+	// Already connected pads also arrive as SDL_CONTROLLERDEVICEADDED
+	// events, but open them now, so the options menu can list them.
+	for(int i = 0; i < SDL_NumJoysticks(); ++i)
+		if(SDL_IsGameController(i))
+			open_pad(i);
+	return 0;
+}
+
+
+void KOBO_main::close_pads()
+{
+	if(!SDL_WasInit(SDL_INIT_GAMECONTROLLER))
+		return;
+	for(int i = 0; i < KOBO_MAX_GAMEPADS; ++i)
+		if(gamepads[i])
+		{
+			SDL_GameControllerClose(gamepads[i]);
+			gamepads[i] = NULL;
+		}
+	SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
+}
+
+
+void KOBO_main::open_pad(int device_index)
+{
+	if(!prefs->gamepad || !SDL_WasInit(SDL_INIT_GAMECONTROLLER))
+		return;
+	if(!SDL_IsGameController(device_index))
+		return;
+	SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(device_index);
+	if(SDL_GameControllerFromInstanceID(id))
+		return;	// Already open
+	for(int i = 0; i < KOBO_MAX_GAMEPADS; ++i)
+		if(!gamepads[i])
+		{
+			gamepads[i] = SDL_GameControllerOpen(device_index);
+			if(!gamepads[i])
+			{
+				log_printf(ELOG, "Couldn't open gamepad %d: "
+						"%s\n", device_index,
+						SDL_GetError());
+				return;
+			}
+			log_printf(ULOG, "Opened gamepad \"%s\"\n",
+					SDL_GameControllerName(gamepads[i]));
+			return;
+		}
+	log_printf(WLOG, "Too many gamepads; ignoring device %d\n",
+			device_index);
+}
+
+
+void KOBO_main::close_pad(SDL_JoystickID instance_id)
+{
+	SDL_GameController *gc = SDL_GameControllerFromInstanceID(instance_id);
+	if(!gc)
+		return;
+	for(int i = 0; i < KOBO_MAX_GAMEPADS; ++i)
+		if(gamepads[i] == gc)
+		{
+			log_printf(ULOG, "Closed gamepad \"%s\"\n",
+					SDL_GameControllerName(gc));
+			SDL_GameControllerClose(gc);
+			gamepads[i] = NULL;
+		}
+}
+
+
+int KOBO_main::count_pads()
+{
+	int n = 0;
+	for(int i = 0; i < KOBO_MAX_GAMEPADS; ++i)
+		if(gamepads[i])
+			++n;
+	return n;
+}
+
+
+const char *KOBO_main::pad_name()
+{
+	for(int i = 0; i < KOBO_MAX_GAMEPADS; ++i)
+		if(gamepads[i])
+		{
+			const char *n = SDL_GameControllerName(gamepads[i]);
+			return n ? n : "Unknown Gamepad";
+		}
+	return NULL;
+}
+
+
 void KOBO_main::load_config(prefs_t *p)
 {
 	const char *path = "<not set>";
@@ -1463,6 +1568,7 @@ int KOBO_main::open()
 	wradar->mode(RM_NOISE);
 	pubrand.init();
 	init_js(prefs);
+	init_pads(prefs);
 	gamecontrol.init();
 	manage.init();
 
@@ -1484,6 +1590,7 @@ void KOBO_main::close()
 {
 	free_themes();
 	clear_messages();
+	close_pads();
 	close_js();
 	close_display();
 	if(gengine)
@@ -1640,8 +1747,10 @@ int KOBO_main::run()
 				return res;
 		if(global_status & OS_RESTART_INPUT)
 		{
+			close_pads();
 			close_js();
 			init_js(prefs);
+			init_pads(prefs);
 			gamecontrol.init();
 		}
 		if(global_status & OS_RESTART_LOGGER)
@@ -2270,6 +2379,209 @@ void kobo_gfxengine_t::mouse_wheel(SDL_Event &ev)
 }
 
 
+/*----------------------------------------------------------
+	Gamepad input
+----------------------------------------------------------*/
+
+// Triggers are analog axes; they act as two extra buttons after SDL's own
+#define	PAD_TRIGGER_LEFT	SDL_CONTROLLER_BUTTON_MAX
+#define	PAD_TRIGGER_RIGHT	(SDL_CONTROLLER_BUTTON_MAX + 1)
+#define	PAD_BUTTONS		(SDL_CONTROLLER_BUTTON_MAX + 2)
+
+// Target each pad button was pressed as, plus one (0 means not held), so that
+// a release always matches its press, even if the game state changed between.
+static int pad_held[PAD_BUTTONS];
+
+static int pad_lx = 0;
+static int pad_ly = 0;
+static gc_targets_t pad_stick_btn = BTN_NONE;	// Left stick as a menu d-pad
+static gc_targets_t pad_nav_btn = BTN_NONE;	// Held navigation, for repeat
+static Uint32 pad_nav_time = 0;
+
+
+static bool pad_in_menu()
+{
+	return dynamic_cast<st_menu_base_t *>(gsm.current()) != NULL;
+}
+
+
+static gc_targets_t pad_map_button(int button)
+{
+	switch(button)
+	{
+	  case SDL_CONTROLLER_BUTTON_A:
+		return BTN_PRIMARY;
+	  case PAD_TRIGGER_RIGHT:
+		// Right side steps menu values up; the left side steps down,
+		// as secondary and tertiary fire already do in menus.
+		return pad_in_menu() ? BTN_INC : BTN_PRIMARY;
+	  case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
+		return pad_in_menu() ? BTN_INC : BTN_TERTIARY;
+	  case SDL_CONTROLLER_BUTTON_B:
+		// Back out of menus, as players expect of B
+		return pad_in_menu() ? BTN_MENU : BTN_SECONDARY;
+	  case SDL_CONTROLLER_BUTTON_X:
+	  case PAD_TRIGGER_LEFT:
+		return BTN_SECONDARY;
+	  case SDL_CONTROLLER_BUTTON_Y:
+		return pad_in_menu() ? BTN_NONE : BTN_TERTIARY;
+	  case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
+		return BTN_TERTIARY;
+	  case SDL_CONTROLLER_BUTTON_START:
+		// Pause in game; start and confirm everywhere else
+		return gsm.current() == &st_game ? BTN_PAUSE : BTN_SELECT;
+	  case SDL_CONTROLLER_BUTTON_BACK:
+		return BTN_MENU;
+	  case SDL_CONTROLLER_BUTTON_DPAD_UP:
+		return BTN_UP;
+	  case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+		return BTN_DOWN;
+	  case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+		return BTN_LEFT;
+	  case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+		return BTN_RIGHT;
+	  default:
+		return BTN_NONE;
+	}
+}
+
+
+static void pad_nav_start(gc_targets_t b)
+{
+	pad_nav_btn = b;
+	pad_nav_time = SDL_GetTicks() + KOBO_PAD_NAV_DELAY;
+}
+
+
+static void pad_button(int button, bool down)
+{
+	if(button < 0 || button >= PAD_BUTTONS)
+		return;
+	gc_targets_t tgt;
+	if(down)
+	{
+		if(pad_held[button])
+			return;
+		if((tgt = pad_map_button(button)) == BTN_NONE)
+			return;
+		pad_held[button] = tgt + 1;
+		gamecontrol.pressbtn(tgt, GC_SRC_GAMEPAD);
+		gsm.pressbtn(tgt);
+		if(tgt >= BTN_UP && tgt <= BTN_RIGHT)
+			pad_nav_start(tgt);
+	}
+	else
+	{
+		if(!pad_held[button])
+			return;
+		tgt = (gc_targets_t)(pad_held[button] - 1);
+		pad_held[button] = 0;
+		gamecontrol.releasebtn(tgt, GC_SRC_GAMEPAD);
+		gsm.releasebtn(tgt);
+		if(tgt == pad_nav_btn)
+			pad_nav_btn = BTN_NONE;
+	}
+}
+
+
+// Magnitude of the stick along the axis that 'b' points
+static int pad_stick_along(gc_targets_t b)
+{
+	switch(b)
+	{
+	  case BTN_UP:		return -pad_ly;
+	  case BTN_DOWN:	return pad_ly;
+	  case BTN_LEFT:	return -pad_lx;
+	  case BTN_RIGHT:	return pad_lx;
+	  default:		return 0;
+	}
+}
+
+
+// A trigger acts as a button, with hysteresis so a half press can't chatter
+static void pad_trigger(int button, int value)
+{
+	if(value >= KOBO_PAD_TRIGGER_PRESS)
+		pad_button(button, true);
+	else if(value < KOBO_PAD_TRIGGER_RELEASE)
+		pad_button(button, false);
+}
+
+
+static void pad_axis(int axis, int value)
+{
+	switch(axis)
+	{
+	  case SDL_CONTROLLER_AXIS_TRIGGERLEFT:
+		pad_trigger(PAD_TRIGGER_LEFT, value);
+		return;
+	  case SDL_CONTROLLER_AXIS_TRIGGERRIGHT:
+		pad_trigger(PAD_TRIGGER_RIGHT, value);
+		return;
+	  case SDL_CONTROLLER_AXIS_LEFTX:
+		pad_lx = value;
+		break;
+	  case SDL_CONTROLLER_AXIS_LEFTY:
+		pad_ly = value;
+		break;
+	  default:
+		return;
+	}
+
+	// In game: analog 8-way movement, same as a joystick
+	gamecontrol.pad_stick(pad_lx, pad_ly);
+
+	// In menus: the stick doubles as a d-pad. This goes to the state
+	// manager only, as gamecontrol already has the analog direction.
+	int ax = abs(pad_lx);
+	int ay = abs(pad_ly);
+	gc_targets_t b = BTN_NONE;
+	if(pad_stick_btn != BTN_NONE &&
+			pad_stick_along(pad_stick_btn) >= KOBO_PAD_NAV_RELEASE)
+		b = pad_stick_btn;	// Hysteresis: hold until clearly let go
+	else if(ay >= ax && ay >= KOBO_PAD_NAV_PRESS)
+		b = pad_ly < 0 ? BTN_UP : BTN_DOWN;
+	else if(ax > ay && ax >= KOBO_PAD_NAV_PRESS)
+		b = pad_lx < 0 ? BTN_LEFT : BTN_RIGHT;
+	if(b == pad_stick_btn)
+		return;
+	if(pad_stick_btn != BTN_NONE)
+	{
+		gsm.releasebtn(pad_stick_btn);
+		if(pad_nav_btn == pad_stick_btn)
+			pad_nav_btn = BTN_NONE;
+	}
+	pad_stick_btn = b;
+	if(b != BTN_NONE)
+	{
+		gsm.pressbtn(b);
+		pad_nav_start(b);
+	}
+}
+
+
+// Held menu navigation repeats, like keyboard autorepeat does
+static void pad_nav_repeat()
+{
+	if(pad_nav_btn == BTN_NONE || !pad_in_menu())
+		return;
+	Uint32 now = SDL_GetTicks();
+	if((Sint32)(now - pad_nav_time) < 0)
+		return;
+	gsm.pressbtn(pad_nav_btn);
+	pad_nav_time = now + KOBO_PAD_NAV_REPEAT;
+}
+
+
+static void pad_release_all()
+{
+	for(int i = 0; i < PAD_BUTTONS; ++i)
+		pad_button(i, false);
+	pad_axis(SDL_CONTROLLER_AXIS_LEFTX, 0);
+	pad_axis(SDL_CONTROLLER_AXIS_LEFTY, 0);
+}
+
+
 void kobo_gfxengine_t::input(float fractional_frame)
 {
 	SDL_Event ev;
@@ -2383,6 +2695,9 @@ void kobo_gfxengine_t::input(float fractional_frame)
 			km.quit();
 			break;
 		  case SDL_JOYBUTTONDOWN:
+			// Opened gamepads report through the SDL_CONTROLLER* events
+			if(SDL_GameControllerFromInstanceID(ev.jbutton.which))
+				break;
 			if(ev.jbutton.which != prefs->joystick_index)
 				break;
 			tgt = gamecontrol.map_js_button(ev.jbutton.button);
@@ -2393,6 +2708,9 @@ void kobo_gfxengine_t::input(float fractional_frame)
 			}
 			break;
 		  case SDL_JOYBUTTONUP:
+			// Opened gamepads report through the SDL_CONTROLLER* events
+			if(SDL_GameControllerFromInstanceID(ev.jbutton.which))
+				break;
 			if(ev.jbutton.which != prefs->joystick_index)
 				break;
 			tgt = gamecontrol.map_js_button(ev.jbutton.button);
@@ -2403,16 +2721,38 @@ void kobo_gfxengine_t::input(float fractional_frame)
 			}
 			break;
 		  case SDL_JOYAXISMOTION:
+			// Opened gamepads report through the SDL_CONTROLLER* events
+			if(SDL_GameControllerFromInstanceID(ev.jaxis.which))
+				break;
 			if(ev.jaxis.which != prefs->joystick_index)
 				break;
 			gamecontrol.js_axis(ev.jaxis.axis, ev.jaxis.value);
 			break;
 		  case SDL_JOYHATMOTION:
+			// Opened gamepads report through the SDL_CONTROLLER* events
+			if(SDL_GameControllerFromInstanceID(ev.jhat.which))
+				break;
 			if(ev.jhat.which != prefs->joystick_index)
 				break;
 			if(ev.jhat.hat != prefs->js_hat)
 				break;
 			gamecontrol.js_hat(ev.jhat.value);
+			break;
+		  case SDL_CONTROLLERDEVICEADDED:
+			km.open_pad(ev.cdevice.which);
+			break;
+		  case SDL_CONTROLLERDEVICEREMOVED:
+			pad_release_all();
+			km.close_pad(ev.cdevice.which);
+			break;
+		  case SDL_CONTROLLERBUTTONDOWN:
+			pad_button(ev.cbutton.button, true);
+			break;
+		  case SDL_CONTROLLERBUTTONUP:
+			pad_button(ev.cbutton.button, false);
+			break;
+		  case SDL_CONTROLLERAXISMOTION:
+			pad_axis(ev.caxis.axis, ev.caxis.value);
 			break;
 		  case SDL_MOUSEMOTION:
 			mouse_motion(ev);
@@ -2428,6 +2768,7 @@ void kobo_gfxengine_t::input(float fractional_frame)
 			break;
 		}
 	}
+	pad_nav_repeat();
 }
 
 

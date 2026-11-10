@@ -68,6 +68,7 @@ class prefs_t : public config_parser_t
 	int	js_secondary;
 	int	js_tertiary;
 	int	js_pause;
+	int	gamepad;	//Use SDL game controllers
 	int	mouse;
 	int	mousemode;
 	int	mouse_threshold;

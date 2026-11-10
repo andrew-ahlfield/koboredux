@@ -81,6 +81,7 @@ void prefs_t::init()
 	key("js_tertiary", js_tertiary, 3);
 			desc("Joystick: Tertiary Fire Button");
 	key("js_pause", js_pause, 2); desc("Joystick: Pause Button");
+	yesno("gamepad", gamepad, 1); desc("Enable Gamepads");
 	yesno("mouse", mouse, 0); desc("Enable Mouse");
 	key("mousemode", mousemode, MMD_CROSSHAIR); desc("Mouse Control Mode");
 	key("mouse_threshold", mouse_threshold, 32);

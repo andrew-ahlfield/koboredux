@@ -285,11 +285,18 @@ void gamecontrol_t::js_axis(int axis, int value)
 		js_x = value;
 	else if(axis == prefs->js_vertical)
 		js_y = value;
+	stick(js_x, js_y);
+}
 
+
+// Analog stick to 8-way direction, shared by joysticks and gamepads
+void gamecontrol_t::stick(int x, int y)
+{
 	int deadzone = prefs->js_deadzone * 32768 / 100;
 	int sprint = prefs->js_sprint * 32768 / 100;
-	int v2 = sqrt(js_x * js_x + js_y * js_y);
-	int newdir = (v2 > deadzone) ? speed2dir(js_x, js_y, 8) : 0;
+	// Float math: x*x + y*y overflows int with the stick in a corner
+	int v2 = sqrtf((float)x * x + (float)y * y);
+	int newdir = (v2 > deadzone) ? speed2dir(x, y, 8) : 0;
 	js_sprint = v2 >= sprint || newdir != direction;
 	direction = newdir;
 }

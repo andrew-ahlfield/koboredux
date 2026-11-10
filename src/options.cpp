@@ -275,7 +275,29 @@ void controls_options_t::build()
 		list("Joystick Number", &prf->joystick_index,
 				OS_RESTART_INPUT);
 		enum_list(0, prf->number_of_joysticks - 1);
+	}
 
+	// Gamepad
+	space();
+	yesno("Use Gamepad", &prf->gamepad, OS_RESTART_INPUT | OS_REBUILD);
+	if(prf->gamepad)
+	{
+		const char *name = km.pad_name();
+		if(!SDL_WasInit(SDL_INIT_GAMECONTROLLER))
+			label("Gamepads Detected After ACCEPT");
+		else if(name)
+		{
+			char buf[64];
+			snprintf(buf, sizeof(buf), "%s", name);
+			label(buf);
+		}
+		else
+			label("No Gamepads Found!");
+	}
+
+	// Stick settings, shared by joysticks and gamepads
+	if(prf->joystick || prf->gamepad)
+	{
 		list("Deadzone Threshold", &prf->js_deadzone, 0);
 			perc_list(0, 100, 10);
 		list("Sprint Threshold", &prf->js_sprint, 0);

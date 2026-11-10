@@ -148,6 +148,7 @@ class KOBO_main
 	static int		exit_game_fast;
   public:
 	static SDL_Joystick	*joystick;
+	static SDL_GameController *gamepads[KOBO_MAX_GAMEPADS];
 
 	static FILE		*logfile;
 	static FILE		*userlogfile;
@@ -232,6 +233,13 @@ class KOBO_main
 
 	static int init_js(prefs_t *p);
 	static void close_js();
+
+	static int init_pads(prefs_t *p);
+	static void close_pads();
+	static void open_pad(int device_index);
+	static void close_pad(SDL_JoystickID instance_id);
+	static int count_pads();
+	static const char *pad_name();
 
 	static bool escape_hammering();
 	static bool escape_hammering_quit();
