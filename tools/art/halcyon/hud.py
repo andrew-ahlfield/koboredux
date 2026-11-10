@@ -119,18 +119,32 @@ def dashboard():
                        [_rect_sdf(504 + k * 7, 313, 3, 10, 1.4)
                         for k in range(18)]))
     parts = [
-        Part(left, "dark", z=0, h=4.0, bevel=6.0, spec=0.3, bright=-0.1),
-        Part(right, "dark", z=0, h=4.0, bevel=6.0, spec=0.3, bright=-0.1),
+        Part(left, "steel", z=0, h=4.0, bevel=6.0, spec=0.3, bright=-0.22),
+        Part(right, "steel", z=0, h=4.0, bevel=6.0, spec=0.3, bright=-0.22),
         Part(struts, "dark", z=1.0, h=2.0, bevel=2.0, dome=True),
         Part(main_frame, "steel", z=0.5, h=3.0, bevel=3.0, dome=True,
              spec=0.5, bright=-0.12),
         Part(bezels, "steel", z=2.5, h=2.0, bevel=2.5, dome=True, spec=0.6,
              bright=-0.05),
-        Part(glowline, "teal", glow=True, bevel=1.0, bright=-0.1),
+        Part(glowline, "amber", glow=True, bevel=1.0, bright=-0.1),
         Part(slots, "dark", z=1.0, h=1.0, bevel=1.0, cut=True),
         Part(rivet, "steel", z=3.0, h=1.0, bevel=1.6, dome=True, spec=0.8),
     ]
     img = np.array(render(parts, 640, 360, outline=True))
+    # Hazard striped warning bands on the wing plates, 1990s cabinet style
+    st = RAMPS["amber"]
+    for (x0, y0, x1, y1) in ((18, 37, 120, 44), (496, 37, 622, 44)):
+        for yy in range(y0, y1 + 1):
+            for xx in range(x0, x1 + 1):
+                on = ((xx + yy) // 3) % 2 == 0
+                c = st[5] if on else RAMPS["dark"][0]
+                if on and yy == y0:
+                    c = st[7]
+                elif on and yy == y1:
+                    c = st[3]
+                img[yy, xx] = (*c, 255)
+        img[y0 - 1, x0 - 1:x1 + 2] = (*RAMPS["dark"][0], 255)
+        img[y1 + 1, x0 - 1:x1 + 2] = (*RAMPS["steel"][6], 255)
     # Opaque black where the game draws its windows
     for (x, y, w, h) in (MAIN, CONSOLE, RADAR, CHARGE, HEALTH):
         img[y:y + h, x:x + w] = (0, 0, 0, 255)

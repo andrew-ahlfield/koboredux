@@ -110,13 +110,18 @@ def smallfont():
 
 
 def bigfont():
-    # Scale2x smoothed, chrome-to-aqua gradient, outline and shadow.
-    grad = [rgb(8), rgb(8), rgb(7), rgb(7), rgb(13), rgb(13), rgb(12),
-            rgb(12), rgb(11), rgb(11), rgb(6), rgb(5), rgb(5), rgb(4)]
+    # Scale2x smoothed, 1990s arcade gradient: white hot top through gold
+    # and orange to a red base, heavy outline and drop shadow.
+    fire = [(255, 255, 238), (255, 246, 190), (255, 228, 120),
+            (255, 204, 70), (255, 176, 40), (252, 146, 30), (240, 112, 24),
+            (222, 80, 20), (196, 52, 18), (160, 30, 20)]
+    grad = [fire[0], fire[1], fire[2], fire[2], fire[3], fire[3], fire[4],
+            fire[5], fire[5], fire[6], fire[7], fire[8], fire[8], fire[9]]
     cells = []
     for ch in CHARS:
         b = scale2x(bitmap(ch))
-        cells.append(styled(b, grad, outline=rgb(1), shadow=rgb(2), pad=1))
+        cells.append(styled(b, grad, outline=(40, 8, 12), shadow=rgb(1),
+                            pad=1))
     return build(cells, 19)
 
 
