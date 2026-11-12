@@ -104,9 +104,11 @@ GROUNDS = [
     dict(a=hramp(34, 0.52, 12, v0=0.08, v1=0.95, shift=0.35),
          b=hramp(12, 0.55, 10, v0=0.07, v1=0.72, shift=0.35),
          glow=glow_ramp(120), feature="dunes"),
-    # 3: jungle canopy cut by teal rivers
-    dict(a=hramp(110, 0.60, 12, v0=0.04, v1=0.66, shift=0.35),
-         b=hramp(178, 0.60, 10, v0=0.06, v1=0.62, shift=0.3),
+    # 3: night jungle: a dark, cool blue green canopy cut by black water
+    #    channels. Kept low in value and well away from the olive hull's
+    #    hue, so the khaki bases and magenta cores stand clear of it
+    dict(a=hramp(166, 0.55, 12, v0=0.03, v1=0.38, shift=0.25),
+         b=hramp(205, 0.55, 10, v0=0.02, v1=0.30, shift=0.2),
          glow=glow_ramp(24), feature="jungle"),
     # 4: violet alien crust with glowing magma fissures
     dict(a=hramp(262, 0.42, 12, v0=0.04, v1=0.62, shift=0.3),
