@@ -135,12 +135,18 @@ def fighter():
     def b():
         body = sd_poly([(0, -9.8), (3.0, -5.5), (3.6, 3.0), (2.6, 8.4),
                         (-2.6, 8.4), (-3.6, 3.0), (-3.0, -5.5)])
-        wing = mirror_x(sd_poly([(2.4, 2.0), (8.6, -5.4), (11.2, -4.6),
-                                 (11.0, 0.4), (6.0, 7.6), (2.4, 7.6)]))
-        claw = mirror_x(sd_poly([(9.0, -5.0), (10.2, -10.0), (11.4, -9.4),
-                                 (11.2, -4.0)]))
-        edge = mirror_x(sd_poly([(8.8, -5.0), (11.0, -4.4), (10.9, -2.6),
-                                 (3.6, 3.8), (3.2, 2.0)]))
+        # Swept delta wings: a broad root along the hull tapering to a
+        # narrow tip well aft, so the outline stays a clear arrowhead at
+        # every rotation instead of two slabs beside the body
+        wing = mirror_x(sd_poly([(2.6, -3.4), (5.6, -1.6), (11.6, 4.6),
+                                 (11.4, 7.4), (7.4, 6.6), (2.6, 8.0)]))
+        # A darker panel seam across each wing and a red leading edge
+        seam = mirror_x(sd_poly([(3.6, 3.4), (9.6, 5.0), (9.4, 5.8),
+                                 (3.4, 4.4)]))
+        claw = mirror_x(sd_poly([(2.8, -4.4), (4.8, -8.8), (5.9, -8.4),
+                                 (5.0, -2.6)]))
+        edge = mirror_x(sd_poly([(2.8, -3.6), (5.6, -1.8), (11.6, 4.4),
+                                 (11.2, 5.2), (5.4, -0.6), (2.8, -2.4)]))
         cockpit = sd_ellipse(0, -3.0, 1.7, 2.8)
         eye = sd_circle(0, -7.2, 1.0)
         engine = mirror_x(sd_capsule(1.8, 3.0, 1.8, 8.2, 1.4))
@@ -150,9 +156,10 @@ def fighter():
             Part(flame, "hotfire", glow=True, bevel=1.2, bright=0.1),
             Part(wing, "amber", z=0.2, h=1.0, bevel=1.8, spec=0.5,
                  bright=-0.12),
-            Part(edge, "red", z=1.2, h=0.3, bevel=0.6, spec=0.6),
-            Part(claw, "dark", z=0.6, h=1.0, bevel=1.0, dome=True,
-                 spec=0.6),
+            Part(seam, "dark", z=1.0, h=0.2, bevel=0.3, cut=True),
+            Part(edge, "red", z=1.2, h=0.3, bevel=0.6, spec=0.2),
+            Part(claw, "steel", z=0.6, h=1.0, bevel=1.0, dome=True,
+                 spec=0.8),
             Part(engine, "dark", z=0.8, h=1.2, bevel=1.4, dome=True,
                  spec=0.6),
             Part(body, "violet", z=1.0, h=2.0, bevel=2.8, dome=True,
