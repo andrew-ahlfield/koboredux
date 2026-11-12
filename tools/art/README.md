@@ -34,7 +34,8 @@ same pixels, so a rebuild with no source changes leaves `git status` clean.
 | `render.py` | A small signed distance field renderer: shapes are built from circles, boxes, capsules and polygons, lit from the top left, quantized to a material ramp and outlined. Rotation sheets are rendered by rotating the shape, not the pixels, so every frame is crisp |
 | `noise.py` | Seamless value noise and fBm, used for rocks, nebulae and planet surfaces |
 | `sprites.py` | Player ship, enemies, motherships, rocks, bullets, bombs, rings, the player's bolts and every explosion (a shared fireball generator gives the blasts a white hot core, smoke, sparks and debris) |
-| `tiles.py` | Base tiles for the five regions, drawn with `pix.py`: every cell is a broad hull slab with a south wall; straight cells are low wall walk decks, junctions carry towers with lit windows, ends are turrets and bunkers. The 12 and 8 px parallax sets are separate distant silhouettes (flat masses and lights) |
+| `tiles.py` | Base tiles for the five regions, drawn with `pix.py`: every cell is a broad hull slab with a south wall; straight cells are low wall walk decks, junctions carry towers with lit windows, ends are turrets and bunkers,
+cores are glowing orbs in armoured drums. The 12 and 8 px parallax sets are separate distant silhouettes (flat masses and lights) |
 | `backgrounds.py` | The tiling space backdrop, and per region planets and ground layers with two materials each (rock and basalt, dunes and mesas, jungle and rivers, crust and magma fissures, ice and crevasses) plus small outposts |
 | `fontdata.py`, `fonts.py` | A hand authored 5x7 font, scaled and styled into the four SoFont sheets |
 | `hud.py` | Dashboard frame, LEDs, weapon slots and the title logo |
@@ -55,7 +56,11 @@ seams, rivets, vents, hazard striping and glowing lights, a strong top
 left light, and fat explosions with smoke and debris. Each region has its
 own material: naval gunmetal with cyan lights, desert khaki with rust
 trim, olive drab with yellow hazard paint, plum armour with gold trim, and
-white ceramic with red markings.
+white ceramic with red markings. Base cores are the one deliberate exception
+to the house style: each region's reactor hue appears nowhere else on its
+bases, and the core is the biggest, brightest and only large round thing
+on a base, so the player's target is always the first thing the eye
+lands on.
 
 ## Checking the result
 

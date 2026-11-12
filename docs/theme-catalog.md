@@ -48,7 +48,7 @@ Rotation sheets start with the nose pointing up and turn clockwise.
 | Bank | File | Frame size | Frames | Notes | Status |
 |---|---|---|---|---|---|
 | `B_PLAYER` | `sprites/player.png` | 24x24 | 64 | Chunky gunmetal gunship: fat fuselage flaring into a twin nozzle tail, canards, cranked wings with red armoured leading edges and teal tip lights, nose and tail guns, canopy glint, hot exhausts | done |
-| `B_FIGHTER` | `sprites/fighter.png` | 24x24 | 32 | Heavy violet body, broad forward swept amber claw wings with red edges and black claw tips, twin engines, red sensor eye, canopy glint | done |
+| `B_FIGHTER` | `sprites/fighter.png` | 24x24 | 32 | Heavy violet body, swept amber delta wings with red leading edges and a panel seam (an arrowhead outline at every rotation), steel forward claws, twin engines, red sensor eye, canopy glint | done |
 | `B_BMR_GREEN` | `sprites/crescent-green.png` | 24x24 | 16 | Armoured crescent with plate seams, spiked horns, steel horn tips and a glowing reactor eye | done |
 | `B_BMR_PURPLE` | `sprites/crescent-violet.png` | 24x24 | 16 | Crescent enemy | done |
 | `B_BMR_PINK` | `sprites/crescent-rose.png` | 24x24 | 16 | Crescent enemy | done |
@@ -75,7 +75,9 @@ Rotation sheets start with the nose pointing up and turn clockwise.
 Five regions, each with its own directory `region-1` to `region-5` and its
 own material: naval gunmetal with cyan lights, desert khaki with rust trim
 and green lights, olive drab with yellow hazard paint, plum armour with
-gold trim and pink lights, white ceramic with red markings.
+gold trim and pink lights, white ceramic with red markings. Each region's
+reactor cores glow in a hue that region uses nowhere else on a base: hot
+pink (1), electric blue (2), magenta (3), aqua (4) and green (5).
 
 Bases are mazes on a two cell grid (junction cells on even positions,
 straight cells between them, the odd/odd cells always empty), so a thin
@@ -97,8 +99,22 @@ between armoured blocks. The look varies by neighbour count:
   mask and region). Junction heavy clusters therefore read as a fortress
   of towers joined by wall walks.
 - Single bit masks are twin barrel turrets on a domed gun house; hard end
-  nodes are hazard striped bunkers; cores sit on a slab that fills the
-  cell, with the glow running down the rail channel.
+  nodes are hazard striped bunkers.
+- Cores are the player's target and are drawn to be the first thing the
+  eye lands on: a round armoured drum that overflows the deck (the only
+  round silhouette that big on a base) holding a nine pixel glassy orb in
+  the region's reactor hue, with a white hot heart, a hard specular glint
+  and a bright crescent of inner reflection, floating in a black socket
+  inside a bright energy band. The rim catches the reactor light and the
+  feeds glow in the rail channel. Over the 8 frame loop the orb and band
+  throb from deep to white hot and four dark clamps turn a quarter turn
+  around the band.
+- The engine has no damaged or destroyed core frames: it draws
+  `16 + (game_time / 2) % 8` (or 24 + ...) whatever the core's health, a
+  damaged core spits `PFX_CORE_FIRE` sparks more often the lower its
+  health, and a destroyed core's cell is cleared and its base blown apart
+  by the pipe chain, leaving the wreckage stubs. Halcyon's
+  `PFX_CORE_FIRE` is hot and sparky so a hurt core visibly burns.
 
 Tile sheets are 8x7 frames: 0 is the alternate 4 way junction (landing
 pad); 1 to 15 are indexed by connection mask (up 1, right 2, down 4,
@@ -110,9 +126,13 @@ down, left); 40 to 45 are straight variants (even frames vertical); 48 to
 The 12 and 8 px parallax sets are drawn separately as distant
 silhouettes, not shrunk from the 16 px art: flat dark deck masses with a
 lit north west rim, towers as the bright masses with a row of lit
-windows, turrets as small domes with a light, cores as glows. No seams,
-rails or rivets, so the far layers read as distant structures with
-lights rather than as more maze. `python3 -m halcyon.mazepreview` builds
+windows, turrets as small domes with a light. Window lights are three by
+two blocks on the box filter's grid so they keep full brightness through
+the downscale and stay visible after the theme's `.38` and `.6` layer
+dimming. Far cores are scenery, not targets: a dark round housing with a
+small dim glow no brighter than a window. No seams, rails or rivets, so
+the far layers read as distant structures with lights rather than as
+more maze. `python3 -m halcyon.mazepreview` builds
 engine style mazes with the tiles for a quick look at all three sizes.
 
 | Bank (for region N) | File | Size | Status |
