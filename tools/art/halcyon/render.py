@@ -135,10 +135,17 @@ class Part:
     spec     specular strength
     bright   intensity offset (to push a part lighter or darker)
     hfunc    optional extra height function added inside the part
+    facet    optional object space normal (nx, ny, nz) for a flat facet:
+             the whole part is lit as one plane (nx mirrored for x < 0, so
+             a mirror_x pair gets mirrored facets) instead of from the
+             height field, so a thin strip such as a leading edge shades
+             as one solid tone at every rotation instead of breaking into
+             a checker of alternating ramp steps
     """
 
     def __init__(self, sdf, mat, z=0.0, h=1.0, bevel=1.5, dome=False,
-                 glow=False, spec=0.35, bright=0.0, hfunc=None, cut=False):
+                 glow=False, spec=0.35, bright=0.0, hfunc=None, cut=False,
+                 facet=None):
         self.sdf = sdf
         self.mat = RAMPS[mat] if isinstance(mat, str) else mat
         self.z = z
@@ -150,6 +157,7 @@ class Part:
         self.bright = bright
         self.hfunc = hfunc
         self.cut = cut  # paints a groove instead of a raised part
+        self.facet = facet
 
 
 def _grid(w, h, ang, ox=0.0, oy=0.0, scale=1.0):
@@ -224,6 +232,15 @@ def render(parts, w, h, ang=0.0, outline=True, dither=False, ox=0.0, oy=0.0,
             d = p.sdf(x, y) * scale
             t = np.clip(-d / max(p.bevel, 1e-3), 0, 1)
             val = 0.35 + 0.65 * t + p.bright
+        elif p.facet is not None:
+            fx, fy, fz = p.facet
+            fx = np.where(x < 0, -fx, fx)
+            fn = math.sqrt(p.facet[0] ** 2 + fy * fy + fz * fz)
+            ca, sa = math.cos(ang), math.sin(ang)
+            snx = (fx * ca - fy * sa) / fn
+            sny = (fx * sa + fy * ca) / fn
+            fd = np.clip(snx * L[0] + sny * L[1] + fz / fn * L[2], 0, 1)
+            val = 0.12 + 0.95 * fd + p.bright + shade_bias
         else:
             val = 0.12 + 0.95 * diff + p.spec * spec_term + p.bright \
                 + shade_bias

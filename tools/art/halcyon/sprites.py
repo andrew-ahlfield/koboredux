@@ -146,7 +146,7 @@ def fighter():
         claw = mirror_x(sd_poly([(2.8, -4.4), (4.8, -8.8), (5.9, -8.4),
                                  (5.0, -2.6)]))
         edge = mirror_x(sd_poly([(2.8, -3.6), (5.6, -1.8), (11.6, 4.4),
-                                 (11.2, 5.2), (5.4, -0.6), (2.8, -2.4)]))
+                                 (10.9, 5.6), (5.2, -0.2), (2.8, -1.9)]))
         cockpit = sd_ellipse(0, -3.0, 1.7, 2.8)
         eye = sd_circle(0, -7.2, 1.0)
         engine = mirror_x(sd_capsule(1.8, 3.0, 1.8, 8.2, 1.4))
@@ -157,7 +157,10 @@ def fighter():
             Part(wing, "amber", z=0.2, h=1.0, bevel=1.8, spec=0.5,
                  bright=-0.12),
             Part(seam, "dark", z=1.0, h=0.2, bevel=0.3, cut=True),
-            Part(edge, "red", z=1.2, h=0.3, bevel=0.6, spec=0.2),
+            # The leading edge is one flat bevelled facet tilted forward
+            # and out, so it shades as a solid panel at every rotation
+            Part(edge, "red", z=1.2, h=0.0, bevel=0.6, spec=0.0, bright=-0.12,
+                 facet=(0.42, -0.46, 0.78)),
             Part(claw, "steel", z=0.6, h=1.0, bevel=1.0, dome=True,
                  spec=0.8),
             Part(engine, "dark", z=0.8, h=1.2, bevel=1.4, dome=True,
