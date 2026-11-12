@@ -83,7 +83,7 @@ def core_ramp(hue, n=9):
 
 
 def _region(hue, sat, v0, v1, shift_, accent, light, core, stripe,
-            trench_hue=None):
+            trench_hue=None, farlight=None):
     metal = hramp(hue, sat, 10, v0=v0, v1=v1, shift=shift_)
     th = hue if trench_hue is None else trench_hue
     return dict(
@@ -94,6 +94,7 @@ def _region(hue, sat, v0, v1, shift_, accent, light, core, stripe,
         light=light,
         core=core,
         stripe=stripe,
+        farlight=light if farlight is None else farlight,
     )
 
 
@@ -126,6 +127,7 @@ REGIONS = [
     _region(330, 0.48, 0.08, 0.92, 0.30,
             accent=hramp(44, 0.8, 6, v0=0.28, v1=1.0, shift=0.2),
             light=glow_ramp(312),
+            farlight=glow_ramp(40),
             core=core_ramp(168),
             stripe=hramp(46, 0.85, 4, v0=0.55, v1=1.0, shift=0.1)),
     # 5: ice fortress, white ceramic, red markings, red lights, green
@@ -932,81 +934,111 @@ def wreck(side, variant, rg):
 # Distant silhouettes for the parallax layers
 # ---------------------------------------------------------------------------
 
-def far_tile(kind, arg, rg, seed=0):
-    """A cell as seen from far away: one broad shaded mass with a lit
-    north west rim, a dark south wall, a darker roof block on junctions
-    and the odd light. No seams, trenches or rivets."""
-    t = Tile(rg)
+def _causeway(t, mask, rg):
+    """The faint link between distant structures: a narrow, dark,
+    translucent strip from the cell centre to each connected edge. From
+    far away the maze's straight runs are barely there, so the far layers
+    read as scattered buildings rather than as a lattice of bars."""
     m = rg["metal"]
-    if kind == "core":
-        mask = (U | D) if arg[0] else (L | R)
-        top = deck_mask(mask, chamfer=0) | R_(0, 0, 15, Y1)
-    elif kind == "wreck":
-        side, variant = arg
-        top = deck_mask(side, chamfer=0)
-        ln = 5 + variant * 3
-        if side == U:
-            top &= R_(-P, -P, T + P, ln)
-        elif side == D:
-            top &= R_(-P, T - 1 - ln - WALL, T + P, T + P)
-        elif side == L:
-            top &= R_(-P, -P, ln, T + P)
-        else:
-            top &= R_(T - 1 - ln, -P, T + P, T + P)
-    else:
-        top = deck_mask(arg, chamfer=1 if kind == "deck" else 3)
+    cw = np.zeros((N, N), dtype=bool)
+    c0, c1 = 6, 9
+    if mask & U:
+        cw |= R_(c0, 0, c1, c1)
+    if mask & D:
+        cw |= R_(c0, c0, c1, T - 1)
+    if mask & L:
+        cw |= R_(0, c0, c1, c1)
+    if mask & R:
+        cw |= R_(c0, c0, T - 1, c1)
+    t.c.fill(cw, m[1], 0.5)
+    return cw
+
+
+def _far_block(t, x0, y0, x1, y1, h, rg, roof=6):
+    """A distant building: a flat roof with a lit north west edge over a
+    dark south wall h pixels tall, and a soft drop shadow."""
+    m = rg["metal"]
+    top = OCT(x0, y0, x1, y1, 1)
     wall = np.zeros_like(top)
-    for k in range(1, WALL + 1):
+    for k in range(1, h + 1):
         wall |= shift(top, 0, k)
     wall &= ~top
-    t.c.fill(wall, m[1])
-    t.c.fill(top, m[2])
+    sh = shift(top | wall, 1, 1) & ~(top | wall)
+    t.c.fill(sh, SHADOW, 0.45)
+    t.c.fill(wall, m[0])
+    t.c.fill(top, m[roof])
     e = edges(top)
-    t.c.fill(e["top"] | e["left"], m[4])
-    t.c.fill(e["bottom"] | e["right"], m[1])
+    t.c.fill(e["top"] | e["left"], m[min(roof + 2, 9)])
+    t.c.fill(e["bottom"] | e["right"], m[max(roof - 2, 1)])
     t.solid |= top | wall
+    return top, wall
+
+
+def _far_windows(t, rg, seed):
+    """A tower's lit glass front: two four by four panes of near white
+    light in the region's far light colour, on the 4 pixel grid so both
+    the 12 px (3:4) and 8 px (1:2) box filters keep every pane pixel at
+    full brightness, which keeps them readable after the theme's .38 and
+    .6 layer dimming. Some towers have one pane dark."""
+    lt = rg.get("farlight", rg["light"])
+    for i, x in enumerate((4, 8)):
+        if (seed + i) % 4 == 3:
+            continue
+        t.c.fill(R_(x, 8, x + 3, 11), lt[5])
+        t.c.fill(R_(x, 11, x + 3, 11), lt[4])
+    t.c.fill(R_(7, 8, 8, 11) & ~R_(8, 8, 8, 11), rg["metal"][0])
+
+
+def far_tile(kind, arg, rg, seed=0):
+    """A cell as seen from far away. Only the junctions are buildings:
+    tees and crosses are tall blocks with lit windows, corners low flat
+    blocks with a beacon, end turrets small domes, hard nodes bunkers and
+    cores round housings. Straight runs are no more than a faint dark
+    causeway, so the far layers read as broad masses, silhouettes and
+    lights instead of as more maze. No seams, trenches or rivets."""
+    t = Tile(rg)
+    m = rg["metal"]
     lt = rg["light"]
-    if kind == "deck" and arg not in (U | D, L | R):
-        # Towers: the bright masses, with a row of lit windows
-        x0 = 1 if not arg & L else 0
-        x1 = 14 if not arg & R else 15
-        y0 = 0 if arg & U else 1
-        roof = R_(x0, y0, x1, 8)
-        wl = R_(x0, 9, x1, 11 + (0 if arg & D else WALL))
-        t.c.fill(wl, m[1])
-        t.c.fill(roof, m[6])
-        t.c.fill(edges(roof)["top"] | edges(roof)["left"], m[8])
-        t.c.fill(edges(roof)["bottom"], m[4])
-        # Windows are three by two and sit on the 2 pixel grid, so the
-        # 8 and 12 px box filters keep a full brightness pixel for each
-        # instead of smearing it across two dim ones; that keeps them
-        # visible through the theme's .38 and .6 layer dimming.
-        for x in (2, 6, 10):
-            if (x // 4 + seed) % 4:
-                t.c.fill(R_(x, 10, x + 2, 11), lt[4])
-                t.c.fill(R_(x + 1, 10, x + 1, 10), lt[5])
-        if seed % 2:
-            t.c.fill(R_(4, 2, 7, 5), lt[4])
-    elif kind == "deck":
-        if seed % 4 == 0:
-            t.c.fill(R_(7, 5, 8, 6), lt[3])
-    elif kind == "cannon":
-        t.c.fill(DISC(7.5, 6.0, 4.5), m[6])
-        t.c.fill(DISC(7.5, 6.0, 4.5) & ~DISC(7.0, 5.5, 3.6), m[2])
-        t.c.fill(R_(7, 5, 8, 6), lt[4])
-    elif kind == "cap":
-        blk = OCT(3, 1, 12, 7, 2)
-        t.c.fill(shift(blk, 0, 3) & ~blk, m[1])
-        t.c.fill(blk, m[5])
-    elif kind == "core":
+    if kind == "core":
+        _causeway(t, (U | D) if arg[0] else (L | R), rg)
         # Scenery, not a target: a round housing with a small, dim glow
         # no brighter than a window, so a far core never reads as one
         # the player can shoot
         cr = rg["core"]
         pulse = 0.5 + 0.5 * math.cos(2 * math.pi * arg[1] / 8)
-        t.c.fill(DISC(8.0, 7.5, 7.0), m[3])
-        t.c.fill(DISC(8.0, 7.5, 5.0), m[1])
+        t.c.fill(DISC(8.5, 8.5, 6.5), SHADOW, 0.45)
+        t.c.fill(DISC(8.0, 7.5, 6.0), m[4])
+        t.c.fill(DISC(8.0, 7.5, 4.5), m[1])
         t.c.fill(R_(6, 6, 9, 9), cr[2 + int(round(pulse))])
+        return t.image()
+    if kind == "wreck":
+        _causeway(t, arg[0], rg)
+        return t.image()
+    mask = arg
+    nconn = bin(mask).count("1")
+    _causeway(t, mask, rg)
+    if kind == "cannon":
+        t.c.fill(DISC(8.5, 8.5, 4.5), SHADOW, 0.45)
+        t.c.fill(DISC(8.0, 7.5, 4.0), m[5])
+        t.c.fill(DISC(8.0, 7.5, 4.0) & ~DISC(7.0, 6.5, 3.2), m[2])
+        t.c.fill(R_(8, 6, 9, 7), rg.get("farlight", lt)[5])
+    elif kind == "cap":
+        _far_block(t, 3, 3, 12, 9, 2, rg, roof=4)
+    elif mask in (U | D, L | R):
+        # A straight run: causeway only, with the odd marker light
+        if seed % 5 == 0:
+            t.c.fill(R_(8, 8, 9, 9), rg.get("farlight", lt)[3])
+    elif nconn >= 3:
+        # Tees and crosses: a tall tower, broad roof, a wall of windows
+        _far_block(t, 1, 0, 14, 7, 5, rg, roof=6)
+        _far_windows(t, rg, seed)
+        if seed % 2:
+            t.c.fill(R_(8, 2, 9, 3), rg.get("farlight", lt)[5])
+    else:
+        # Corners: a low flat block, every third one with a beacon
+        _far_block(t, 2, 2, 13, 10, 2, rg, roof=4)
+        if seed % 3 == 0:
+            t.c.fill(R_(8, 4, 9, 5), rg.get("farlight", lt)[5])
     return t.image()
 
 
