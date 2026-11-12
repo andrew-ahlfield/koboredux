@@ -289,6 +289,12 @@ class KOBO_enemies
 	static void set_ekind_to_generate(const KOBO_enemy_kind * ek1, int i1,
 			const KOBO_enemy_kind * ek2, int i2);
 	static void splash_damage(int x, int y, int damage);
+	// Render only: list the map cells of live cores that have taken
+	// damage, with a damage stage (1 = hurt, 2 = near death) for each.
+	// Reads enemy state and changes nothing, so it is safe to call from
+	// rendering without affecting replays. Returns the number of entries
+	// written, at most 'max'.
+	static int damaged_cores(int *cx, int *cy, int *stage, int max);
 	static const KOBO_enemy_kind *ek1()
 	{
 		return ekind_to_generate_1;

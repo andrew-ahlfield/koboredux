@@ -78,7 +78,8 @@ class KOBO_screen
 
 	static void render_noise();
 	static void render_highlight();
-	static void render_bases(KOBO_map &map, int tileset, int vx, int vy);
+	static void render_bases(KOBO_map &map, int tileset, int vx, int vy,
+			bool live = false);
 	static void clean_scrap_tile(int x, int y)
 	{
 		if((map[0].pos(x, y) & SPACE) && (MAP_TILE(map[0].pos(x, y))))

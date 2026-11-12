@@ -976,11 +976,30 @@ void KOBO_screen::init_background()
 }
 
 
-void KOBO_screen::render_bases(KOBO_map &map, int tileset, int vx, int vy)
+// Optional damaged core frames, after the classic 56 frame tile layout:
+// 56-63 hurt core (vertical), 64-71 hurt core (horizontal), 72-79 core
+// near death (vertical), 80-87 core near death (horizontal). A tile sheet
+// without them keeps drawing the normal core frames at any health.
+#define	KOBO_CORE_DAMAGE_TILES	56
+#define	KOBO_CORE_DAMAGE_LAST	87
+#define	KOBO_MAX_DAMAGED_CORES	64
+
+void KOBO_screen::render_bases(KOBO_map &map, int tileset, int vx, int vy,
+		bool live)
 {
 	s_bank_t *b = s_get_bank(gengine->get_gfx(), tileset);
 	if(!b)
 		return;
+
+	// Damage stages of the live cores. Render only: this reads enemy
+	// state and decides nothing but which frame is drawn.
+	int dcx[KOBO_MAX_DAMAGED_CORES];
+	int dcy[KOBO_MAX_DAMAGED_CORES];
+	int dcs[KOBO_MAX_DAMAGED_CORES];
+	int ndc = 0;
+	if(live && (b->max >= KOBO_CORE_DAMAGE_LAST))
+		ndc = enemies.damaged_cores(dcx, dcy, dcs,
+				KOBO_MAX_DAMAGED_CORES);
 
 	// Undo centering
 	vx += PIXEL2CS((int)DASHW(MAIN) / 2);
@@ -1016,10 +1035,18 @@ void KOBO_screen::render_bases(KOBO_map &map, int tileset, int vx, int vy)
 			int tile;
 			if(n & CORE)
 			{
-				if(n & (U_MASK | D_MASK))
-					tile = 16;
-				else
-					tile = 24;
+				bool vert = n & (U_MASK | D_MASK);
+				tile = vert ? 16 : 24;
+				int cx = (mx + x) & (MAP_SIZEX - 1);
+				int cy = (my + y) & (MAP_SIZEY - 1);
+				for(int i = 0; i < ndc; ++i)
+					if((dcx[i] == cx) && (dcy[i] == cy))
+					{
+						tile = KOBO_CORE_DAMAGE_TILES +
+								(dcs[i] - 1) * 16 +
+								(vert ? 0 : 8);
+						break;
+					}
 				tile += frame / 2 & 7;
 			}
 			else
@@ -1099,7 +1126,7 @@ void KOBO_screen::render_background()
 	// Render the bases of the current level
 	cm = 255.0f * themedata.get(KOBO_D_BASES_COLORMOD, show_title ? 3 : 2);
 	wlowsprites->colormod(cm, cm, cm);
-	render_bases(map[0], B_R1_TILES + region, vx, vy);
+	render_bases(map[0], B_R1_TILES + region, vx, vy, true);
 	wlowsprites->resetmod();
 
 	// Adjust scroll position for fire/explosions layer

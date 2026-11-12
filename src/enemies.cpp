@@ -199,6 +199,28 @@ void KOBO_enemies::hit_map(int x, int y, int dmg)
 			e->hit(dmg);
 }
 
+int KOBO_enemies::damaged_cores(int *cx, int *cy, int *stage, int max)
+{
+	int count = 0;
+	for(KOBO_enemy *e = NULL; (count < max) && (e = next(e)); )
+	{
+		if(e->ek != &core)
+			continue;
+		int st;
+		if(e->health * 3 <= game.core_health)
+			st = 2;
+		else if(e->health * 3 <= game.core_health * 2)
+			st = 1;
+		else
+			continue;
+		cx[count] = (CS2PIXEL(e->x) & (WORLD_SIZEX - 1)) >> 4;
+		cy[count] = (CS2PIXEL(e->y) & (WORLD_SIZEY - 1)) >> 4;
+		stage[count] = st;
+		++count;
+	}
+	return count;
+}
+
 int KOBO_enemies::exist_pipe()
 {
 	int count = 0;
