@@ -22,16 +22,22 @@ trenches between hull blocks:
   other base element uses, floating in a black socket inside a bright
   energy band, pulsing with four clamps turning around it.
 
-Tile index layout (8 x 7 sheet), matching the engine's map.cpp:
+Tile index layout (8 x 11 sheet), matching the engine's map.cpp and
+screen.cpp:
   0         four-way junction, landing pad variant
   1-15      cells by connection mask (U=1 R=2 D=4 L=8);
             single-bit masks (1, 2, 4, 8) are the destructible cannons
   16-23     core, connected vertically (8 frame pulse; the engine shows
-            frame game_time / 2 % 8, and has no damaged core frames)
+            frame game_time / 2 % 8)
   24-31     core, connected horizontally (8 frame pulse)
   32-35     armoured (indestructible) end caps U, R, D, L
   40-45     straight run variants (even vertical, odd horizontal)
   48-55     wreckage left after destruction (U, U, R, R, D, D, L, L)
+  56-71     hurt core (health at or below two thirds): 56-63 vertical,
+            64-71 horizontal, same 8 frame loop
+  72-87     core near death (at or below one third): 72-79 vertical,
+            80-87 horizontal
+The 12 and 8 px sheets stop at 55: the parallax layers have no live cores.
 
 The 16 px set is drawn in full detail. The 12 and 8 px sets for the
 parallax layers are drawn separately as distant silhouettes (dark deck
@@ -643,14 +649,53 @@ CORE_R = 4.7          # orb radius: a nine pixel orb in a fifteen pixel
                       # drum, the biggest round thing on a base
 
 
-def core(frame, vertical, rg):
+def _poly(points):
+    """A one pixel wide line mask through points (tile coordinates)."""
+    mk = np.zeros((N, N), dtype=bool)
+    for (x0, y0), (x1, y1) in zip(points[:-1], points[1:]):
+        n = int(max(abs(x1 - x0), abs(y1 - y0)) * 3) + 1
+        for i in range(n + 1):
+            u = i / float(n)
+            x = int(math.floor(x0 + (x1 - x0) * u)) + P
+            y = int(math.floor(y0 + (y1 - y0) * u)) + P
+            if 0 <= x < N and 0 <= y < N:
+                mk[y, x] = True
+    return mk
+
+
+# Damage stages. The orb's brightness per frame of the 8 frame loop: a hurt
+# core blinks out twice a loop, a dying one sputters.
+CORE_FLICKER = (
+    (1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0),
+    (1.0, 1.0, 1.0, 0.45, 1.0, 1.0, 0.7, 1.0),
+    (0.85, 0.3, 1.0, 0.15, 0.6, 1.0, 0.25, 0.55),
+)
+CORE_DIM = (1.0, 0.75, 0.42)
+# Cracks across the glass, as polylines in tile coordinates
+CRACK_1 = [[(4.0, 6.0), (6.5, 7.2), (8.2, 6.4), (10.2, 8.2), (12.0, 8.6)],
+           [(8.2, 6.4), (8.8, 4.6), (9.6, 3.6)]]
+CRACK_2 = [[(5.0, 10.6), (7.4, 9.2), (8.6, 10.0), (10.4, 9.6)],
+           [(6.5, 7.2), (6.0, 4.4)],
+           [(10.2, 8.2), (11.6, 11.0)]]
+BREACH_C = (12.9, 12.2)  # where the dying core's drum is torn open
+
+
+def core(frame, vertical, rg, damage=0):
     """The reactor core, the player's target. It has to be the first thing
     the eye lands on in any region, so it breaks every rule the rest of the
     base follows: a round armoured drum that overflows the deck, carrying a
     nine pixel glassy orb in a hue nothing else on the base uses, white hot
     at the centre with a hard specular glint, floating in a black socket
     inside a bright energy band. Over the 8 frame loop the orb and band
-    breathe and four dark clamps turn a quarter turn around the band."""
+    breathe and four dark clamps turn a quarter turn around the band.
+
+    damage 1 is a hurt core: a dark crack across the dimmed glass, a clamp
+    blown off, a scorched rim, sparks, and the orb blinking out twice a
+    loop. damage 2 is a core near death: the glass dark and split by white
+    hot fissures, the band broken and sputtering, two clamps gone, the drum
+    torn open on the south east to the black socket with embers inside, and
+    showers of sparks. Both keep the reactor hue and the round drum, so a
+    damaged core still reads as the target."""
     t = Tile(rg)
     mask = (U | D) if vertical else (L | R)
     top, flat = hull(t, mask, chamfer=0)
@@ -659,24 +704,50 @@ def core(frame, vertical, rg):
     nc = len(cr)
     ph = 2 * math.pi * frame / 8
     pulse = 0.5 + 0.5 * math.cos(ph)
+    fl = CORE_FLICKER[damage][frame]
+    dim = CORE_DIM[damage] * fl
+    rng = np.random.RandomState(frame * 7 + damage * 101 +
+                                (0 if vertical else 50))
     cx, cy = CORE_C
     ddx = XS + 0.5 - cx
     ddy = YS + 0.5 - cy
     rr = np.hypot(ddx, ddy)
     nw = ddx + ddy < 0
-    # Energy feeds glowing in the deck's rail channel
+    ang = np.arctan2(ddy, ddx)
+
+    def crk(i):
+        return cr[max(1, min(nc - 1, int(round(i))))]
+
+    # Energy feeds glowing in the deck's rail channel; a dying core's
+    # feeds are dead
     if vertical:
         feed = R_(7, -P, 8, T + P)
     else:
         feed = R_(-P, 6, T + P, 7)
     feed &= TILE()
-    t.c.fill(feed, cr[2 + int(round(pulse * 2))])
+    if damage < 2:
+        t.c.fill(feed, crk((2 + pulse * 2) * (0.7 + 0.3 * fl)))
+    else:
+        t.c.fill(feed, SHADOW)
+        t.c.fill(feed & (((XS + YS) % 5) == 0), crk(1 + 2 * fl))
+    # Scorching on the deck around a damaged drum
+    if damage:
+        sc = np.zeros((N, N), dtype=bool)
+        r2 = np.random.RandomState(damage * 3 + (0 if vertical else 1))
+        for _ in range(2 + 2 * damage):
+            a = r2.uniform(0, 2 * math.pi)
+            sc |= DISC(cx + math.cos(a) * 7.0, cy + math.sin(a) * 6.5,
+                       r2.uniform(1.5, 2.6))
+        t.c.tint(sc & TILE(), SHADOW, 0.35 + 0.15 * damage)
     # The drum: dark armour, a hard lit rim to the north west, a short
     # side wall on the south and a black outline all round
     drum = rr <= 7.4
-    side = shift(drum, 0, 1) & ~drum
-    t.c.fill(dilate(drum | side, diag=True) & ~(drum | side) & TILE(),
-             rg["outline"])
+    breach = np.zeros((N, N), dtype=bool)
+    if damage == 2:
+        breach = drum & DISC(BREACH_C[0], BREACH_C[1], 5.0)
+    side = (shift(drum, 0, 1) & ~drum) & ~shift(breach, 0, 1)
+    t.c.fill(dilate(drum | side, diag=True) & ~(drum | side) & TILE() &
+             ~dilate(breach), rg["outline"])
     t.c.fill(side, m[1])
     t.c.fill(drum, m[2])
     rim = drum & (rr > 6.5)
@@ -684,14 +755,38 @@ def core(frame, vertical, rg):
     t.c.fill(rim & ~nw, m[3])
     t.c.fill(rim & (np.abs(ddx - ddy) < 1.0) & (ddx < 0), m[9])
     # Reactor light spilling over the rim
-    t.c.tint(rim, cr[nc - 3], 0.15 + 0.35 * pulse)
+    t.c.tint(rim, cr[nc - 3], (0.15 + 0.35 * pulse) * dim)
+    if damage:
+        # Blast scorch across the rim on the north east (and south west)
+        scorch = rim & (np.abs(ang + math.pi / 4) < 0.55)
+        if damage == 2:
+            scorch |= drum & ~(rr <= 5.5) & \
+                (np.abs(ang - 3 * math.pi / 4) < 0.6)
+        t.c.fill(scorch, m[1])
+        t.c.fill(scorch & (rng.uniform(size=(N, N)) < 0.3), m[0])
     # Energy band, breathing with the pulse, lit on the far (south east)
-    # inner wall
+    # inner wall; damage blows sections of it dark
     band = (rr <= 6.5) & (rr > 5.5)
-    t.c.fill(band, cr[3 + int(round(pulse * 4))])
-    t.c.fill(band & nw, cr[2 + int(round(pulse * 4))])
-    # Four dark clamps crossing the band, turning a quarter turn a loop
+    lv = (3 + pulse * 4) * (0.55 + 0.45 * dim)
+    t.c.fill(band, crk(lv))
+    t.c.fill(band & nw, crk(lv - 1))
+    if damage == 1:
+        gap = band & (np.abs(ang + math.pi / 4) < 0.5)
+        t.c.fill(gap, m[0])
+    elif damage == 2:
+        # Only a few arcs of the band still carry current, and which
+        # ones jumps from frame to frame
+        seg = ((ang + math.pi) / (2 * math.pi) * 8).astype(int) % 8
+        live = rng.uniform(size=8) < 0.35 + 0.3 * fl
+        dead = band & ~live[seg]
+        t.c.fill(dead, m[1])
+        t.c.fill(dead & ((XS + YS) % 3 == 0), m[0])
+    # Four dark clamps crossing the band, turning a quarter turn a loop;
+    # damage has blown some of them away
+    gone = (set(), {1}, {1, 2})[damage]
     for k in range(4):
+        if k in gone:
+            continue
         a = math.pi / 4 + k * math.pi / 2 + ph / 4
         bx = cx + math.cos(a) * 6.0
         by = cy + math.sin(a) * 6.0
@@ -710,18 +805,77 @@ def core(frame, vertical, rg):
     Lx, Ly, Lz = -0.5, -0.6, 0.62
     ln = math.sqrt(Lx * Lx + Ly * Ly + Lz * Lz)
     lit = np.clip((dx * Lx + dy * Ly + nz * Lz) / ln, 0, 1)
-    heat = np.clip(1 - np.sqrt(d2) / (0.35 + 0.35 * pulse), 0, 1)
+    hr = (0.35 + 0.35 * pulse) * (1.0, 0.85, 0.55)[damage]
+    heat = np.clip(1 - np.sqrt(d2) / hr, 0, 1)
     v = 0.0 + 0.6 * lit ** 1.3 + 0.7 * heat + 0.2 * pulse
+    v = v * (0.25 + 0.75 * dim)
     k = np.clip(np.round(v * (nc - 1)), 1, nc - 1).astype(int)
     for i in range(nc):
         t.c.fill(orb & (k == i), cr[i])
     # Inner reflection: a bright crescent on the shadow side of the glass
     refl = orb & (rr > CORE_R - 1.1) & (dx + dy > 0.8)
-    t.c.fill(refl, cr[nc - 5])
-    # Specular glint
+    t.c.fill(refl, crk((nc - 5) * (0.5 + 0.5 * dim)))
+    if damage == 1:
+        # A dark crack across the glass, its lower lip catching the glow
+        ck = np.zeros((N, N), dtype=bool)
+        for pl in CRACK_1:
+            ck |= _poly(pl)
+        t.c.fill(shift(ck, 0, 1) & orb & ~ck, cr[nc - 2])
+        t.c.fill(ck & orb, SHADOW)
+    elif damage == 2:
+        # The glass is split: dark seams with white hot light leaking
+        # through, brighter when the core flares
+        ck = np.zeros((N, N), dtype=bool)
+        for pl in CRACK_1 + CRACK_2:
+            ck |= _poly(pl)
+        t.c.fill(dilate(ck) & orb & ~ck, cr[1])
+        t.c.fill(ck & orb, crk(nc - 3 + 2 * fl))
+    # Specular glint (chipped on a dying core)
     gx, gy = int(cx - 3), int(cy - 3)
-    t.c.fill(R_(gx, gy, gx + 1, gy), (255, 255, 255))
-    t.c.px(gx + P, gy + 1 + P, (255, 255, 255))
+    if damage < 2:
+        t.c.fill(R_(gx, gy, gx + 1, gy), (255, 255, 255))
+        t.c.px(gx + P, gy + 1 + P, (255, 255, 255))
+    else:
+        t.c.px(gx + P, gy + P, (220, 220, 220))
+    if damage == 2:
+        # The torn open drum: jagged dark armour edge, black socket,
+        # embers and the reactor's glow inside
+        t.c.fill(breach, SHADOW)
+        lip = breach & ~erode(breach)
+        t.c.fill(lip & ~nw, m[0])
+        jag = lip & (rng.uniform(size=(N, N)) < 0.35)
+        t.c.fill(jag, m[3])
+        emb = erode(breach) & (np.random.RandomState(7).uniform(
+            size=(N, N)) < 0.3)
+        t.c.fill(emb, glow_ramp(24)[2])
+        hot = emb & (rng.uniform(size=(N, N)) < 0.45 * fl + 0.1)
+        t.c.fill(hot, glow_ramp(36)[4])
+        t.c.fill(breach & DISC(cx + 3.0, cy + 2.6, 1.6) & ~orb,
+                 crk(2 + 3 * fl))
+    # Sparks: hot white and yellow pixels jumping round the damage
+    if damage:
+        sp = glow_ramp(48)
+        n_sp = (0, 1 + (frame % 3 == 0), 3 + (frame % 2))[damage]
+        for _ in range(n_sp):
+            if damage == 1:
+                a = rng.uniform(-1.4, 0.2)
+                r = rng.uniform(4.5, 7.5)
+                x, y = cx + math.cos(a) * r, cy + math.sin(a) * r
+            else:
+                if rng.uniform() < 0.6:
+                    x = BREACH_C[0] - 1.5 + rng.uniform(-2.5, 2.5)
+                    y = BREACH_C[1] - 1.5 + rng.uniform(-2.5, 2.5)
+                else:
+                    a = rng.uniform(0, 2 * math.pi)
+                    r = rng.uniform(3.0, 7.5)
+                    x, y = cx + math.cos(a) * r, cy + math.sin(a) * r
+            xi, yi = int(x), int(y)
+            if not (0 <= xi < T and 0 <= yi < T):
+                continue
+            t.c.px(xi + P, yi + P, (255, 255, 240))
+            ex, ey = rng.randint(-1, 2), rng.randint(-1, 2)
+            if (ex or ey) and 0 <= xi + ex < T and 0 <= yi + ey < T:
+                t.c.px(xi + ex + P, yi + ey + P, sp[3])
     return t.image()
 
 
@@ -888,7 +1042,7 @@ def _specs():
 def tileset16(region):
     rg = REGIONS[region]
     blank = Image.new("RGBA", (T, T), (0, 0, 0, 0))
-    tiles = [blank] * 56
+    tiles = [blank] * 88
     tiles[0] = deck(15, rg, variant=1, seed=region)
     for msk in range(1, 16):
         if msk in (U, R, D, L):
@@ -898,6 +1052,10 @@ def tileset16(region):
     for f in range(8):
         tiles[16 + f] = core(f, True, rg)
         tiles[24 + f] = core(f, False, rg)
+        for dmg in (1, 2):
+            o = 56 + (dmg - 1) * 16
+            tiles[o + f] = core(f, True, rg, damage=dmg)
+            tiles[o + 8 + f] = core(f, False, rg, damage=dmg)
     for k, msk in enumerate((U, R, D, L)):
         tiles[32 + k] = hard_cap(msk, rg)
     for k in range(3):
