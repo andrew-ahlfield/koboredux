@@ -17,12 +17,17 @@ trenches between hull blocks:
   heavy clusters read as a fortress of towers joined by wall walks.
 - Closed sides stop just short of the tile edge with chamfered corners;
   the south side shows a tall wall, so the structure has height.
+- Cores, the player's target, break the rules on purpose: a round
+  armoured drum overflowing the deck holds a big glassy orb in a hue no
+  other base element uses, floating in a black socket inside a bright
+  energy band, pulsing with four clamps turning around it.
 
 Tile index layout (8 x 7 sheet), matching the engine's map.cpp:
   0         four-way junction, landing pad variant
   1-15      cells by connection mask (U=1 R=2 D=4 L=8);
             single-bit masks (1, 2, 4, 8) are the destructible cannons
-  16-23     core, connected vertically (8 frame pulse)
+  16-23     core, connected vertically (8 frame pulse; the engine shows
+            frame game_time / 2 % 8, and has no damaged core frames)
   24-31     core, connected horizontally (8 frame pulse)
   32-35     armoured (indestructible) end caps U, R, D, L
   40-45     straight run variants (even vertical, odd horizontal)
@@ -34,12 +39,13 @@ masses, bright tower blocks with lit windows, no line detail) and box
 filtered down.
 """
 
+import colorsys
 import math
 import numpy as np
 from PIL import Image
 
-from .pix import (Canvas, hramp, glow_ramp, shift, dilate, erode,
-                  edges, rect, disc, octagon, downscale)
+from .pix import (Canvas, hramp, glow_ramp, _hue_towards, shift, dilate,
+                  erode, edges, rect, disc, octagon, downscale)
 from .render import sheet
 
 U, R, D, L = 1, 2, 4, 8
@@ -52,6 +58,22 @@ Y0, Y1 = 1, 11  # deck rows on a closed side (the wall hangs below)
 
 SHADOW = (6, 4, 18)
 HAZARD_DARK = (24, 20, 26)
+
+
+def core_ramp(hue, n=9):
+    """The reactor orb's own ramp: a deep, fully saturated shadow tone up
+    through the pure hue to a white hot top. No other base element uses
+    these hues, so the orb is the one thing on a base in this colour."""
+    out = []
+    for i in range(n):
+        t = i / float(n - 1)
+        h = _hue_towards(hue, 250.0, 0.18 * (1 - t) ** 2)
+        s = 1.0 - 0.9 * t ** 3
+        v = 0.22 + 0.78 * min(1.0, t * 1.5) ** 0.8
+        r, g, b = colorsys.hsv_to_rgb(h / 360.0, s, v)
+        out.append((int(round(r * 255)), int(round(g * 255)),
+                    int(round(b * 255))))
+    return out
 
 
 def _region(hue, sat, v0, v1, shift_, accent, light, core, stripe,
@@ -69,39 +91,43 @@ def _region(hue, sat, v0, v1, shift_, accent, light, core, stripe,
     )
 
 
-# Five material identities. Ramps are 10 shades, darkest first.
+# Five material identities. Ramps are 10 shades, darkest first. Each
+# reactor hue is picked to be one that region's hull, trim, lights and
+# turrets never use, so the core is the only thing on a base in its colour.
 REGIONS = [
-    # 1: naval gunmetal, cyan lights, amber hazard paint, cyan reactor
+    # 1: naval gunmetal, cyan lights, amber hazard paint, hot pink reactor
     _region(212, 0.22, 0.10, 0.96, 0.30,
             accent=hramp(36, 0.85, 6, v0=0.30, v1=1.0, shift=0.2),
             light=glow_ramp(185),
-            core=glow_ramp(190),
+            core=core_ramp(322),
             stripe=hramp(44, 0.95, 4, v0=0.55, v1=1.0, shift=0.1)),
-    # 2: desert fortress, sand armour, rust trim, green lights, fire core
+    # 2: desert fortress, sand armour, rust trim, green lights, electric
+    #    blue reactor
     _region(40, 0.46, 0.09, 0.98, 0.22,
             accent=hramp(10, 0.75, 6, v0=0.22, v1=0.9, shift=0.25),
             light=glow_ramp(120),
-            core=glow_ramp(14),
+            core=core_ramp(192),
             stripe=hramp(4, 0.85, 4, v0=0.45, v1=0.95, shift=0.1)),
-    # 3: jungle military, olive drab, yellow hazard, orange lights, toxic
-    #    green reactor
+    # 3: jungle military, olive drab, yellow hazard, orange lights, magenta
+    #    reactor
     _region(76, 0.34, 0.10, 1.00, 0.30,
             accent=hramp(50, 0.9, 6, v0=0.28, v1=1.0, shift=0.15),
             light=glow_ramp(24),
-            core=glow_ramp(95),
+            core=core_ramp(305),
             stripe=hramp(52, 0.95, 4, v0=0.55, v1=1.0, shift=0.1)),
-    # 4: alien crimson, plum armour, gold trim, hot pink lights, violet
+    # 4: alien crimson, plum armour, gold trim, hot pink lights, aqua
     #    reactor
     _region(330, 0.48, 0.08, 0.92, 0.30,
             accent=hramp(44, 0.8, 6, v0=0.28, v1=1.0, shift=0.2),
             light=glow_ramp(312),
-            core=glow_ramp(275),
+            core=core_ramp(168),
             stripe=hramp(46, 0.85, 4, v0=0.55, v1=1.0, shift=0.1)),
-    # 5: ice fortress, white ceramic, red markings, red lights, amber core
+    # 5: ice fortress, white ceramic, red markings, red lights, green
+    #    reactor
     _region(212, 0.20, 0.14, 1.00, 0.12,
             accent=hramp(356, 0.85, 6, v0=0.30, v1=0.95, shift=0.15),
             light=glow_ramp(354),
-            core=glow_ramp(38),
+            core=core_ramp(125),
             stripe=hramp(356, 0.9, 4, v0=0.50, v1=0.95, shift=0.1)),
 ]
 
@@ -612,56 +638,90 @@ def hard_cap(mask, rg):
     return t.image()
 
 
+CORE_C = (8.0, 7.5)   # orb centre; the drum's side shows on the last row
+CORE_R = 4.7          # orb radius: a nine pixel orb in a fifteen pixel
+                      # drum, the biggest round thing on a base
+
+
 def core(frame, vertical, rg):
+    """The reactor core, the player's target. It has to be the first thing
+    the eye lands on in any region, so it breaks every rule the rest of the
+    base follows: a round armoured drum that overflows the deck, carrying a
+    nine pixel glassy orb in a hue nothing else on the base uses, white hot
+    at the centre with a hard specular glint, floating in a black socket
+    inside a bright energy band. Over the 8 frame loop the orb and band
+    breathe and four dark clamps turn a quarter turn around the band."""
     t = Tile(rg)
     mask = (U | D) if vertical else (L | R)
-    # The core slab fills the whole cell so it meets any neighbour
-    top, flat = hull(t, 15, chamfer=0)
+    top, flat = hull(t, mask, chamfer=0)
     m = t.m
     cr = rg["core"]
-    pulse = 0.5 + 0.5 * math.cos(2 * math.pi * frame / 8)
-    cx, cy = 8.0, 6.5
-    # Hazard corners
-    for (x0, y0) in ((0, 0), (13, 0), (0, 9), (13, 9)):
-        hz = R_(x0, y0, x0 + 2, y0 + 2) & top
-        t.hazard(hz, phase=frame // 4)
-    # Energy feed glowing in the trench
-    tr = _groove(t, mask, ~DISC(cx, cy, 6.5))
-    t.c.fill(tr & TILE(), cr[2 + int(round(pulse * 2))])
-    # Housing ring with clamps
-    t.c.fill(DISC(cx, cy, 6.9), rg["outline"])
-    t.c.fill(DISC(cx, cy, 6.4), m[3])
-    e = edges(DISC(cx, cy, 6.4))
-    t.c.fill(e["top"] | e["left"], m[7])
-    t.c.fill(e["bottom"] | e["right"], m[1])
+    nc = len(cr)
+    ph = 2 * math.pi * frame / 8
+    pulse = 0.5 + 0.5 * math.cos(ph)
+    cx, cy = CORE_C
+    ddx = XS + 0.5 - cx
+    ddy = YS + 0.5 - cy
+    rr = np.hypot(ddx, ddy)
+    nw = ddx + ddy < 0
+    # Energy feeds glowing in the deck's rail channel
+    if vertical:
+        feed = R_(7, -P, 8, T + P)
+    else:
+        feed = R_(-P, 6, T + P, 7)
+    feed &= TILE()
+    t.c.fill(feed, cr[2 + int(round(pulse * 2))])
+    # The drum: dark armour, a hard lit rim to the north west, a short
+    # side wall on the south and a black outline all round
+    drum = rr <= 7.4
+    side = shift(drum, 0, 1) & ~drum
+    t.c.fill(dilate(drum | side, diag=True) & ~(drum | side) & TILE(),
+             rg["outline"])
+    t.c.fill(side, m[1])
+    t.c.fill(drum, m[2])
+    rim = drum & (rr > 6.5)
+    t.c.fill(rim & nw, m[8])
+    t.c.fill(rim & ~nw, m[3])
+    t.c.fill(rim & (np.abs(ddx - ddy) < 1.0) & (ddx < 0), m[9])
+    # Reactor light spilling over the rim
+    t.c.tint(rim, cr[nc - 3], 0.15 + 0.35 * pulse)
+    # Energy band, breathing with the pulse, lit on the far (south east)
+    # inner wall
+    band = (rr <= 6.5) & (rr > 5.5)
+    t.c.fill(band, cr[3 + int(round(pulse * 4))])
+    t.c.fill(band & nw, cr[2 + int(round(pulse * 4))])
+    # Four dark clamps crossing the band, turning a quarter turn a loop
     for k in range(4):
-        a = math.pi / 4 + k * math.pi / 2
-        bx = cx + math.cos(a) * 5.6 - 0.5
-        by = cy + math.sin(a) * 5.6 - 0.5
-        t.c.fill(R_(int(bx), int(by), int(bx) + 1, int(by) + 1), m[8])
-        t.c.px(int(bx) + 1 + P, int(by) + 1 + P, m[2])
-    # Emissive core: brightness follows the pulse
-    rad = 4.9
-    inner = DISC(cx, cy, rad)
-    t.c.fill(DISC(cx, cy, rad + 0.6) & ~inner, cr[1])
-    d = np.hypot(XS + 0.5 - cx, YS + 0.5 - cy) / rad
-    v = np.clip(1 - d, 0, 1) * (0.8 + 0.4 * pulse) + 0.2 + 0.15 * pulse
-    k = np.clip(np.round(v * (len(cr) - 1)), 0, len(cr) - 1)
-    for i in range(len(cr)):
-        t.c.fill(inner & (k == i), cr[i])
-    # Rotating shutter blades over the glow
-    a0 = 2 * math.pi * frame / 8 / 3
-    for b in range(3):
-        a = a0 + b * 2 * math.pi / 3
-        for rr in (2.8, 3.6, 4.4):
-            x = cx + math.cos(a) * rr - 0.5
-            y = cy + math.sin(a) * rr - 0.5
-            t.c.px(int(round(x)) + P, int(round(y)) + P, m[2])
-    halo = DISC(cx, cy, 8.5) & ~DISC(cx, cy, 6.9) & t.solid
-    t.c.tint(halo, cr[3], 0.15 + 0.2 * pulse)
-    on = frame % 4 < 2
-    t.light(0, 5, size=1, level=1.0 if on else 0.3, halo=False)
-    t.light(15, 5, size=1, level=0.3 if on else 1.0, halo=False)
+        a = math.pi / 4 + k * math.pi / 2 + ph / 4
+        bx = cx + math.cos(a) * 6.0
+        by = cy + math.sin(a) * 6.0
+        cl = DISC(bx, by, 1.0) & band
+        t.c.fill(cl, m[1])
+    # Black socket so the orb floats
+    t.c.fill(DISC(cx, cy, 5.5), SHADOW)
+    # The orb: a lit glass sphere, deep colour at the shadowed rim, the
+    # pure hue in the body, a white hot heart that swells with the pulse
+    # and a hard specular glint up and to the left
+    orb = DISC(cx, cy, CORE_R)
+    dx = ddx / CORE_R
+    dy = ddy / CORE_R
+    d2 = dx * dx + dy * dy
+    nz = np.sqrt(np.clip(1 - d2, 0, 1))
+    Lx, Ly, Lz = -0.5, -0.6, 0.62
+    ln = math.sqrt(Lx * Lx + Ly * Ly + Lz * Lz)
+    lit = np.clip((dx * Lx + dy * Ly + nz * Lz) / ln, 0, 1)
+    heat = np.clip(1 - np.sqrt(d2) / (0.35 + 0.35 * pulse), 0, 1)
+    v = 0.0 + 0.6 * lit ** 1.3 + 0.7 * heat + 0.2 * pulse
+    k = np.clip(np.round(v * (nc - 1)), 1, nc - 1).astype(int)
+    for i in range(nc):
+        t.c.fill(orb & (k == i), cr[i])
+    # Inner reflection: a bright crescent on the shadow side of the glass
+    refl = orb & (rr > CORE_R - 1.1) & (dx + dy > 0.8)
+    t.c.fill(refl, cr[nc - 5])
+    # Specular glint
+    gx, gy = int(cx - 3), int(cy - 3)
+    t.c.fill(R_(gx, gy, gx + 1, gy), (255, 255, 255))
+    t.c.px(gx + P, gy + 1 + P, (255, 255, 255))
     return t.image()
 
 
@@ -763,11 +823,16 @@ def far_tile(kind, arg, rg, seed=0):
         t.c.fill(roof, m[6])
         t.c.fill(edges(roof)["top"] | edges(roof)["left"], m[8])
         t.c.fill(edges(roof)["bottom"], m[4])
-        for x in range(x0 + 2, x1 - 1, 4):
-            if (x // 4 + seed) % 3:
-                t.c.fill(R_(x, 10, x + 1, 11), lt[5])
+        # Windows are three by two and sit on the 2 pixel grid, so the
+        # 8 and 12 px box filters keep a full brightness pixel for each
+        # instead of smearing it across two dim ones; that keeps them
+        # visible through the theme's .38 and .6 layer dimming.
+        for x in (2, 6, 10):
+            if (x // 4 + seed) % 4:
+                t.c.fill(R_(x, 10, x + 2, 11), lt[4])
+                t.c.fill(R_(x + 1, 10, x + 1, 10), lt[5])
         if seed % 2:
-            t.c.fill(R_(6, 2, 9, 4), lt[4])
+            t.c.fill(R_(4, 2, 7, 5), lt[4])
     elif kind == "deck":
         if seed % 4 == 0:
             t.c.fill(R_(7, 5, 8, 6), lt[3])
@@ -780,11 +845,14 @@ def far_tile(kind, arg, rg, seed=0):
         t.c.fill(shift(blk, 0, 3) & ~blk, m[1])
         t.c.fill(blk, m[5])
     elif kind == "core":
+        # Scenery, not a target: a round housing with a small, dim glow
+        # no brighter than a window, so a far core never reads as one
+        # the player can shoot
         cr = rg["core"]
         pulse = 0.5 + 0.5 * math.cos(2 * math.pi * arg[1] / 8)
-        t.c.fill(DISC(8.0, 6.5, 6.2), m[2])
-        t.c.fill(DISC(8.0, 6.5, 4.6), cr[2 + int(round(pulse))])
-        t.c.fill(DISC(8.0, 6.5, 2.6), cr[4 + int(round(pulse))])
+        t.c.fill(DISC(8.0, 7.5, 7.0), m[3])
+        t.c.fill(DISC(8.0, 7.5, 5.0), m[1])
+        t.c.fill(R_(6, 6, 9, 9), cr[2 + int(round(pulse))])
     return t.image()
 
 
