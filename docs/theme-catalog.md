@@ -48,7 +48,7 @@ Rotation sheets start with the nose pointing up and turn clockwise.
 | Bank | File | Frame size | Frames | Notes | Status |
 |---|---|---|---|---|---|
 | `B_PLAYER` | `sprites/player.png` | 24x24 | 64 | Chunky gunmetal gunship: fat fuselage flaring into a twin nozzle tail, canards, cranked wings with red armoured leading edges and teal tip lights, nose and tail guns, canopy glint, hot exhausts | done |
-| `B_FIGHTER` | `sprites/fighter.png` | 24x24 | 32 | Heavy violet body, swept amber delta wings with red leading edges and a panel seam (an arrowhead outline at every rotation), steel forward claws, twin engines, red sensor eye, canopy glint | done |
+| `B_FIGHTER` | `sprites/fighter.png` | 24x24 | 32 | Heavy violet body, swept amber delta wings with flat shaded red leading edges and a panel seam (an arrowhead outline at every rotation), steel forward claws, twin engines, red sensor eye, canopy glint | done |
 | `B_BMR_GREEN` | `sprites/crescent-green.png` | 24x24 | 16 | Armoured crescent with plate seams, spiked horns, steel horn tips and a glowing reactor eye | done |
 | `B_BMR_PURPLE` | `sprites/crescent-violet.png` | 24x24 | 16 | Crescent enemy | done |
 | `B_BMR_PINK` | `sprites/crescent-rose.png` | 24x24 | 16 | Crescent enemy | done |
@@ -74,7 +74,9 @@ Rotation sheets start with the nose pointing up and turn clockwise.
 
 Five regions, each with its own directory `region-1` to `region-5` and its
 own material: naval gunmetal with cyan lights, desert khaki with rust trim
-and green lights, olive drab with yellow hazard paint, plum armour with
+and green lights, olive drab with yellow hazard paint (over a dark, cool
+night jungle of blue green canopy and black water, so the khaki armour
+and magenta cores stand clear of the ground), plum armour with
 gold trim and pink lights, white ceramic with red markings. Each region's
 reactor cores glow in a hue that region uses nowhere else on a base: hot
 pink (1), electric blue (2), magenta (3), aqua (4) and green (5).
@@ -109,35 +111,65 @@ between armoured blocks. The look varies by neighbour count:
   feeds glow in the rail channel. Over the 8 frame loop the orb and band
   throb from deep to white hot and four dark clamps turn a quarter turn
   around the band.
-- The engine has no damaged or destroyed core frames: it draws
-  `16 + (game_time / 2) % 8` (or 24 + ...) whatever the core's health, a
-  damaged core spits `PFX_CORE_FIRE` sparks more often the lower its
-  health, and a destroyed core's cell is cleared and its base blown apart
-  by the pipe chain, leaving the wreckage stubs. Halcyon's
-  `PFX_CORE_FIRE` is hot and sparky so a hurt core visibly burns.
+- Cores show their damage. The engine picks one of three stages from the
+  core's health, for drawing only (see "Damaged core frames" below):
+  healthy, hurt (a dark crack across the dimmed glass, one clamp blown
+  off, a scorched rim, sparks, the orb blinking out twice a loop) and
+  near death (the glass dark and split by white hot fissures, the
+  energy band broken and sputtering, two clamps gone, the drum torn open
+  on the south east to the black socket with embers inside, feeds dead
+  and showers of sparks). Every stage keeps the reactor hue and the round
+  drum, so a damaged core still reads as the target. A damaged core also
+  spits `PFX_CORE_FIRE` sparks more often the lower its health, and a
+  destroyed core's cell is cleared and its base blown apart by the pipe
+  chain, leaving the wreckage stubs.
 
-Tile sheets are 8x7 frames: 0 is the alternate 4 way junction (landing
+Tile sheets are 8 frames wide: 0 is the alternate 4 way junction (landing
 pad); 1 to 15 are indexed by connection mask (up 1, right 2, down 4,
 left 8; single bits are cannon turrets); 16 to 23 animate the core
 vertically and 24 to 31 horizontally; 32 to 35 are hard nodes (up, right,
 down, left); 40 to 45 are straight variants (even frames vertical); 48 to
-55 are wreckage stubs.
+55 are wreckage stubs. 36 to 39, 46 and 47 are unused.
+
+#### Damaged core frames (optional, 16 px sheet only)
+
+A 16 px tile sheet may carry four more rows, making it 8x11 frames
+(128x176 for 16 px tiles). Each block is the same 8 frame loop as the
+healthy core, shown as `game_time / 2 % 8`:
+
+| Frames | Shown when |
+|---|---|
+| 56 to 63 | core connected vertically, health at or below two thirds |
+| 64 to 71 | core connected horizontally, health at or below two thirds |
+| 72 to 79 | core connected vertically, health at or below one third |
+| 80 to 87 | core connected horizontally, health at or below one third |
+
+The engine uses them only when the bank has at least 88 frames; a sheet
+with the classic 56 frames keeps drawing frames 16 to 31 at any health,
+so older themes are unaffected. The choice is render only: it reads the
+core's health and changes nothing in the simulation, so replays, rewind
+and Time Flux behave exactly as before. The 12 and 8 px parallax sheets
+show other stages' maps, which have no live cores, and stay at 56 frames.
 
 The 12 and 8 px parallax sets are drawn separately as distant
-silhouettes, not shrunk from the 16 px art: flat dark deck masses with a
-lit north west rim, towers as the bright masses with a row of lit
-windows, turrets as small domes with a light. Window lights are three by
-two blocks on the box filter's grid so they keep full brightness through
-the downscale and stay visible after the theme's `.38` and `.6` layer
-dimming. Far cores are scenery, not targets: a dark round housing with a
-small dim glow no brighter than a window. No seams, rails or rivets, so
-the far layers read as distant structures with lights rather than as
-more maze. `python3 -m halcyon.mazepreview` builds
+silhouettes, not shrunk from the 16 px art, and only the junctions are
+buildings: tees and crosses are tall blocks with a broad roof and a lit
+glass front, corners are low flat blocks (every third with a beacon),
+end turrets are small domes with a light, hard nodes are bunkers and
+cores are round housings. Straight runs are no more than a faint, dark,
+translucent causeway, so the far layers read as scattered broad masses
+and lights rather than as a lattice of bars. Lit panes are four by four
+on the 4 pixel grid, so both box filters keep them at full brightness
+through the theme's `.38` and `.6` layer dimming, and each region has a
+far light colour that stands off its armour (region 4's are warm gold,
+since its pink lights vanished against the plum). Far cores are scenery,
+not targets: a dark round housing with a small dim glow no brighter than
+a window. `python3 -m halcyon.mazepreview` builds
 engine style mazes with the tiles for a quick look at all three sizes.
 
 | Bank (for region N) | File | Size | Status |
 |---|---|---|---|
-| `B_RN_TILES` | `region-N/tiles.png` | 16x16 tiles | done |
+| `B_RN_TILES` | `region-N/tiles.png` | 16x16 tiles, 8x11 sheet with the damaged core frames | done |
 | `B_RN_TILES_SMALL_SPACE` (`_SMALL_GROUND` aliased) | `region-N/tiles-small.png` | 12x12 tiles | done |
 | `B_RN_TILES_TINY_SPACE` (`_TINY_INTERMEDIATE`, `_TINY_GROUND` aliased) | `region-N/tiles-tiny.png` | 8x8 tiles | done |
 | `B_RN_PLANET` (`B_RNL9_GROUND` aliased) | `region-N/planet.png` | 512x512, spinning planet texture, 64 colours | done |

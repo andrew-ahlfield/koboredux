@@ -31,12 +31,12 @@ same pixels, so a rebuild with no source changes leaves `git status` clean.
 |---|---|
 | `palette.py` | The 64 colour master palette (`halcyon.gpl`: 32 base colours plus fire, smoke, plasma, toxic and magenta effect ramps) and the hue shifted material ramps every sprite is shaded with |
 | `pix.py` | Hand-pixel style helpers: hue shifted ramp generator (cool shadows, warm highlights) and a mask based RGBA canvas for hard bevels, seams, rivets and lights |
-| `render.py` | A small signed distance field renderer: shapes are built from circles, boxes, capsules and polygons, lit from the top left, quantized to a material ramp and outlined. Rotation sheets are rendered by rotating the shape, not the pixels, so every frame is crisp |
+| `render.py` | A small signed distance field renderer: shapes are built from circles, boxes, capsules and polygons, lit from the top left, quantized to a material ramp and outlined. A part can be a flat facet with one fixed normal, so a thin strip shades as one solid tone. Rotation sheets are rendered by rotating the shape, not the pixels, so every frame is crisp |
 | `noise.py` | Seamless value noise and fBm, used for rocks, nebulae and planet surfaces |
 | `sprites.py` | Player ship, enemies, motherships, rocks, bullets, bombs, rings, the player's bolts and every explosion (a shared fireball generator gives the blasts a white hot core, smoke, sparks and debris) |
 | `tiles.py` | Base tiles for the five regions, drawn with `pix.py`: every cell is a broad hull slab with a south wall; straight cells are low wall walk decks, junctions carry towers with lit windows, ends are turrets and bunkers,
-cores are glowing orbs in armoured drums. The 12 and 8 px parallax sets are separate distant silhouettes (flat masses and lights) |
-| `backgrounds.py` | The tiling space backdrop, and per region planets and ground layers with two materials each (rock and basalt, dunes and mesas, jungle and rivers, crust and magma fissures, ice and crevasses) plus small outposts |
+cores are glowing orbs in armoured drums, with hurt and near death stages (frames 56 to 87) the engine shows as a core loses health. The 12 and 8 px parallax sets are separate distant silhouettes: junctions are buildings with lit panes, straight runs only a faint causeway |
+| `backgrounds.py` | The tiling space backdrop, and per region planets and ground layers with two materials each (rock and basalt, dunes and mesas, night jungle and black water, crust and magma fissures, ice and crevasses) plus small outposts |
 | `fontdata.py`, `fonts.py` | A hand authored 5x7 font, scaled and styled into the four SoFont sheets |
 | `hud.py` | Dashboard frame, LEDs, weapon slots and the title logo |
 | `fx.py` | Noise strips, shield effect and the screen transition tiles |
